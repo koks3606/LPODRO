@@ -1,0 +1,3 @@
+software/*
+!software/
+!software/main.py
