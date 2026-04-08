@@ -1,3 +1,5 @@
 software/*
 !software/
 !software/main.py
+!software/rpi.py
+!software/requirements.txt
