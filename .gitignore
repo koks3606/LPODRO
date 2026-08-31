@@ -1,5 +1,8 @@
 software/*
 !software/
-!software/main.py
+!software/main_pl.py
+!software/main_en.py
 !software/rpi.py
 !software/requirements.txt
+!software/grbl_config.txt
+*.odt

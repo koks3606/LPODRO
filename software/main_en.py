@@ -53,7 +53,7 @@ sciezki = {}  # Słownik do przechowywania ścieżek
 
 home = [
     "$H",
-    "G92 X-18.4 Y-20.2 Z0"
+    "G92 X-16.4 Y-18.2 Z0"
 ]
 
 home_z = [
@@ -72,13 +72,13 @@ cfg = configparser.ConfigParser()
 if os.path.exists(CONFIG_FILE):
     cfg.read(CONFIG_FILE)
     if "Connection" not in cfg:
-        raise RuntimeError("Brak sekcji [Connection] w config.ini mimo tego że plik istnieje. Najprawdopodobnie jest on uszkodzony.")
+        raise RuntimeError("There is no [Connection] section in config.ini even though the file exists. It is most likely corrupted.")
     conn = cfg["Connection"]
     try:
         pnp_cam_x = float(conn.get("camera_up_x_mm"))
         pnp_cam_y = float(conn.get("camera_up_y_mm"))
     except Exception:
-        raise RuntimeError("Brak camera_up_x_mm / camera_up_y_mm w sekcji [Connection] mimo tego że plik config.ini istnieje. Najprawdopodobnie jest on uszkodzony.")
+        raise RuntimeError("Camera_up_x_mm / camera_up_y_mm is missing in the [Connection] section even though the config.ini file exists. It is most likely corrupted.")
 
     pnp_cam_x = pnp_cam_x + float(conn.get("pnp_offset_x_mm"))
     pnp_cam_y = pnp_cam_y + float(conn.get("pnp_offset_y_mm"))
@@ -104,12 +104,12 @@ else:
         "zbridges": "1",
         "delta": "5",
         "zlevelmax": "0.15",
-        "zlevelmin": "-1",
+        "zlevelmin": "-3",
         "levelfeed": "10"
     }
     cfg["Connection"] = {
-        "camera_up_x_mm": "124.8",
-        "camera_up_y_mm": "177.6",
+        "camera_up_x_mm": "123.2",
+        "camera_up_y_mm": "176.1",
         "camera_rotation_deg": "0",
         "camera_up_rotation_deg": "0",
         "camera_ip": "",
@@ -121,7 +121,7 @@ else:
     }
     with open(CONFIG_FILE, "w") as config:
         cfg.write(config)
-    print("NIE ZNALEZIONO PLIKU KONFIGURACYJNEGO config.ini (został on usunięty lub uszkodzony)! Utworzono nowy z wartościami domyślnymi. PROSZĘ NATYCHMIAST WYKONAĆ WSTĘPNĄ KONFIGURACJĘ POPRZEZ WYBRANIE OPCJI 2 NA NASTĘPNYM EKRANIE A NASTĘPNIE PONOWNIE URUCHOMIĆ PROGRAM!")
+    print("THE CONFIGURATION FILE config.ini WAS NOT FOUND (it was deleted or corrupted)! A new one has been created with default values. PLEASE IMMEDIATELY PERFORM INITIAL CONFIGURATION BY SELECTING OPTION 2 ON THE NEXT SCREEN AND THEN RESTART THE PROGRAM!")
     input()
 
 
@@ -506,12 +506,12 @@ def manual_calibration(img_bgr, real_coords=None):
         real_coords = [(0, 0), (0, 194), (194, 194), (194, 0)]
 
     if img_bgr is None:
-        raise ValueError("Przekazany obraz jest pusty (None)")
+        raise ValueError("The provided image is empty (None).")
 
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.imshow(img_rgb)
-    ax.set_title('Kliknij kolejno: (0, 0), (0, 194), (194, 194), (194, 0)')
+    ax.set_title('Click the following in order: (0, 0), (0, 194), (194, 194), (194, 0)')
     pts = []
 
     def onclick(event):
@@ -527,14 +527,14 @@ def manual_calibration(img_bgr, real_coords=None):
     plt.show()
 
     if len(pts) != 4:
-        print(f"Kalibracja przerwana, znaleziono tylko {len(pts)} punktów.")
+        print(f"Calibration interrupted; only {len(pts)} points found.")
         return
 
     src = np.array(pts, dtype=np.float32)
     dst = np.array(real_coords, dtype=np.float32)
     H = cv2.getPerspectiveTransform(src, dst)
     np.save(CALIBRATION_FILE, H)
-    print(f"Zapisano macierz homografii w {CALIBRATION_FILE}")
+    print(f"Saved the homography matrix in {CALIBRATION_FILE}")
 
 def manual_color_calibration(img_bgr):
     """
@@ -543,14 +543,14 @@ def manual_color_calibration(img_bgr):
     Zapisuje parametry koloru do JSON.
     """
     if img_bgr is None:
-        raise ValueError("Przekazany obraz jest pusty (None)")
+        raise ValueError("The provided image is empty (None).")
 
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     img_hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
 
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.imshow(img_rgb)
-    ax.set_title('Kliknij miejsca na laminacie, zamknij okno po skończeniu')
+    ax.set_title('Click on the laminate, then close the window when finished.')
     samples = []
 
     def onclick(event):
@@ -565,7 +565,7 @@ def manual_color_calibration(img_bgr):
     plt.show()
 
     if not samples:
-        print("Brak próbek koloru. Kalibracja przerwana.")
+        print("No color samples. Calibration interrupted.")
         return
 
     arr = np.array(samples, dtype=np.float32)
@@ -576,7 +576,7 @@ def manual_color_calibration(img_bgr):
 
     with open(COLOR_CALIBRATION_FILE, 'w') as f:
         json.dump({'lower': lower, 'upper': upper}, f, indent=2)
-    print(f"Zapisano parametry koloru w {COLOR_CALIBRATION_FILE}")
+    print(f"Color parameters saved in {COLOR_CALIBRATION_FILE}")
 
 def load_homography(camera='top'):
     """
@@ -586,11 +586,11 @@ def load_homography(camera='top'):
     """
     if camera == 'top':
         if not os.path.isfile(CALIBRATION_FILE):
-            raise FileNotFoundError("Brak homografii. Wykonaj kalibrację homografii.")
+            raise FileNotFoundError("No homography. Perform homography calibration.")
         return np.load(CALIBRATION_FILE)
     elif camera == 'up':
         if not os.path.isfile(CALIBRATION_FILE_UP):
-            raise FileNotFoundError("Brak homografii dla kamery up. Wykonaj kalibrację (manual_calibration_up).")
+            raise FileNotFoundError("No homography for the 'up' camera. Perform calibration (manual_calibration_up).")
         return np.load(CALIBRATION_FILE_UP)
     else:
         raise ValueError("camera must be 'top' or 'up'")
@@ -608,7 +608,7 @@ def pixel_to_machine_using_homography(px, py, camera='up'):
 
 def load_color_params():
     if not os.path.isfile(COLOR_CALIBRATION_FILE):
-        raise FileNotFoundError("Brak kalibracji koloru. Wykonaj kalibrację koloru.")
+        raise FileNotFoundError("Color calibration missing. Perform color calibration.")
     data = json.load(open(COLOR_CALIBRATION_FILE))
     return np.array(data['lower'], dtype=np.uint8), np.array(data['upper'], dtype=np.uint8)
 
@@ -624,7 +624,7 @@ def detect_copper_corner(img_bgr):
     lower, upper = load_color_params()
 
     if img_bgr is None:
-        raise ValueError("Przekazany obraz jest pusty (None)")
+        raise ValueError("The provided image is empty (None).")
 
     # Konwersja na RGB i HSV
     img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
@@ -633,7 +633,7 @@ def detect_copper_corner(img_bgr):
     # 1) Oryginał
     plt.figure(figsize=(6,6))
     plt.imshow(img_rgb)
-    plt.title('1) Oryginalne zdjęcie')
+    plt.title('1) Original photo')
     plt.axis('off')
     plt.show()
 
@@ -644,7 +644,7 @@ def detect_copper_corner(img_bgr):
 
     plt.figure(figsize=(6,6))
     plt.imshow(mask, cmap='gray')
-    plt.title('2) Maska koloru laminatu')
+    plt.title('2) Laminate color mask')
     plt.axis('off')
     plt.show()
 
@@ -662,13 +662,22 @@ def detect_copper_origin(img_bgr, width_mm, height_mm):
     H = load_homography()
     lower, upper = load_color_params()
 
+    # Podgląd etapów detekcji przez matplotlib, nie cv2.imshow — OpenCV-HighGUI (Qt)
+    # ma trwały konflikt z backendem strumienia sieciowego górnej kamery w tym
+    # środowisku. Matplotlib (jak w kalibracji kolorów/rogów) działa niezawodnie.
+    def _show_stage(img, title, cmap=None):
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.imshow(img, cmap=cmap)
+        ax.set_title(title + " — close the window to proceed.")
+        ax.axis('off')
+        plt.show()
+
     # 2) Przygotuj maskę laminatu
     img_hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
     mask = cv2.inRange(img_hsv, lower, upper)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-    window = 'Maska koloru'
-    cv2.imshow(window, mask); cv2.waitKey(0); cv2.destroyWindow(window)
+    _show_stage(mask, "Color mask", cmap='gray')
 
     # 3) Wyznacz kontur laminatu
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -676,13 +685,12 @@ def detect_copper_origin(img_bgr, width_mm, height_mm):
     area = h * w
     candidates = [c for c in contours if cv2.contourArea(c) > 0.001 * area]
     if not candidates:
-        input("Brak koonturu laminatu")
+        input("Missing laminate outline")
         return False
     board_contour = max(candidates, key=lambda c: cv2.contourArea(c)).reshape(-1, 2)
     vis_cont = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
     cv2.polylines(vis_cont, [board_contour.astype(int)], True, (255, 0, 0), 2)
-    window = 'Kontur laminatu'
-    cv2.imshow(window, vis_cont); cv2.waitKey(0); cv2.destroyWindow(window)
+    _show_stage(vis_cont, "Laminate outline")
 
     # 4) Przelicz w mm->px dla czterech narożników PCB i oblicz bounding box
     H_inv = np.linalg.inv(H)
@@ -701,7 +709,7 @@ def detect_copper_origin(img_bgr, width_mm, height_mm):
     ky = int(np.ceil(max_y - min_y))
     print(f'[DEBUG] Kernel size: kx={kx}, ky={ky}')
     if kx < 1 or ky < 1:
-        raise ValueError('Niepoprawne wymiary PCB lub homografia niewłaściwa.')
+        raise ValueError('Incorrect PCB dimensions or invalid homography.')
 
     # 5) Znajdź wszystkie piksele maski
     mask_pts = np.column_stack(np.where(mask > 0))  # (row, col)
@@ -715,7 +723,7 @@ def detect_copper_origin(img_bgr, width_mm, height_mm):
             if window.shape == (ky, kx) and np.all(window > 0):
                 valid.append((row, col))
     if not valid:
-        raise RuntimeError(f'Brak miejsca na PCB o wymiarach {width_mm:.1f}x{height_mm:.1f} mm.')
+        raise RuntimeError(f'Insufficient space on a PCB with dimensions of {width_mm:.1f}x{height_mm:.1f} mm.')
 
     # 6) Finalny wybór z valid optymalizujący pozycję
     # Możemy minimalizować:
@@ -739,13 +747,12 @@ def detect_copper_origin(img_bgr, width_mm, height_mm):
                   (int(col), int(row)),
                   (int(col + kx), int(row + ky)),
                   (0, 255, 0), 2)
-    window = 'Punkt 0 i obrys PCB'
-    cv2.imshow(window, vis); cv2.waitKey(0); cv2.destroyWindow(window)
+    _show_stage(vis, "0 point and PCB outline")
 
     return X0, Y0
 
     
-def select_file_dialog(title="Wybierz plik"): 
+def select_file_dialog(title="Select a file"):
     """Otwiera okno dialogowe do wyboru pliku przed wywołaniem akcji."""
     file_path = filedialog.askopenfilename(title=title,
                                            filetypes=[("Obrazy", "*.png *.jpg *.jpeg *.bmp"), ("Wszystkie pliki", "*.*")])
@@ -753,7 +760,7 @@ def select_file_dialog(title="Wybierz plik"):
 
 def capture_write(filename="image.jpeg", port=0, ramp_frames=30, x=1440, y=1080):
     camera = cv2.VideoCapture(f"http://{ip}")
-    print("Użyto starej funkcji capture write!")
+    print("The old capture write function was used!")
     # Set Resolution
     camera.set(3, x)
     camera.set(4, y)
@@ -910,11 +917,16 @@ def capture_write_unified(filename="image.jpeg", camera='top', camera_source=Non
             src = None
 
     if src is None:
-        raise RuntimeError("Brak zdefiniowanego źródła kamery (camera_source / camera_ip / global ip).")
+        raise RuntimeError("No camera source defined (camera_source / camera_ip / global ip).")
 
     cap = open_video_capture_from_source(src)
     if cap is None:
-        raise RuntimeError(f"Nie udało się otworzyć źródła kamery: {src}")
+        raise RuntimeError(f"Failed to open the camera source: {src}")
+
+    # Latarka pomocnicza jest fizycznie przy głowicy PnP/kamerze w blacie —
+    # nie ma potrzeby (ani sensu) włączać jej przy zdjęciach z górnej kamery.
+    if camera == 'up':
+        send_message("LIGHT_ON")
 
     # ustaw rozdzielczość jeśli podano
     if width:
@@ -933,12 +945,14 @@ def capture_write_unified(filename="image.jpeg", camera='top', camera_source=Non
     retval, im = cap.read()
     if not retval or im is None:
         cap.release()
-        raise RuntimeError("Kamera nie zwróciła klatki.")
+        raise RuntimeError("The camera did not return a frame.")
     rot = read_camera_rotation_from_config(camera)
     if rot != 0:
         im = rotate_image(im, rot)
     cv2.imwrite(filename, im)
     cap.release()
+    if camera == 'up':
+        send_message("LIGHT_OFF")
     return True
 
 
@@ -947,7 +961,7 @@ def load_config():
     if os.path.exists(CONFIG_FILE):
         config.read(CONFIG_FILE)
     else:
-        cfg["Settings"] = {
+        config["Settings"] = {
             "tool_diam": "0.1643",
             "multi_depth": "0.5",
             "passes": "1",
@@ -967,12 +981,12 @@ def load_config():
             "zbridges": "1",
             "delta": "5",
             "zlevelmax": "0.15",
-            "zlevelmin": "-1",
+            "zlevelmin": "-3",
             "levelfeed": "10"
         }
-        cfg["Connection"] = {
-            "camera_up_x_mm": "124.8",
-            "camera_up_y_mm": "177.6",
+        config["Connection"] = {
+            "camera_up_x_mm": "123.2",
+            "camera_up_y_mm": "176.1",
             "camera_rotation_deg": "0",
             "camera_up_rotation_deg": "0",
             "camera_ip": "",
@@ -982,9 +996,9 @@ def load_config():
             "pnp_offset_y_mm": "40",
             "camera_up_corners": "127.6,179.4;127.6,176.4;122,176.4;122,179.4"
         }
-        with open(CONFIG_FILE, "w") as cfg:
-            config.write(cfg)
-        print("NIE ZNALEZIONO PLIKU KONFIGURACYJNEGO config.ini (został on usunięty lub uszkodzony)! Utworzono nowy z wartościami domyślnymi. PROSZĘ NATYCHMIAST WYKONAĆ WSTĘPNĄ KONFIGURACJĘ POPRZEZ WYBRANIE OPCJI 2 NA NASTĘPNYM EKRANIE!")
+        with open(CONFIG_FILE, "w") as configfile:
+            config.write(configfile)
+        print("Configuration file config.ini not found (it was deleted or corrupted)! A new one with default values ​​has been created. PLEASE PERFORM THE INITIAL CONFIGURATION IMMEDIATELY BY SELECTING OPTION 2 ON THE NEXT SCREEN!")
         input()
     settings = {k: float(v) for k, v in config["Settings"].items()}
     # Parsujemy połączenia (mogą być puste)
@@ -996,7 +1010,15 @@ def load_config():
 
 def save_config(config_dict):
     config = configparser.ConfigParser()
-    config["Settings"] = {key: str(value) for key, value in config_dict.items()}
+    if os.path.exists(CONFIG_FILE):
+        config.read(CONFIG_FILE)
+    if "Settings" not in config:
+        config["Settings"] = {}
+    for key, value in config_dict.items():
+        if isinstance(value, float) and value.is_integer():
+            config["Settings"][key] = str(int(value))
+        else:
+            config["Settings"][key] = str(value)
     with open(CONFIG_FILE, "w") as configfile:
         config.write(configfile)
     
@@ -1022,27 +1044,36 @@ def send_wake_up(ser):
     ser.flushInput()  # Flush startup text in serial input
 
 
-def wait_for_movement_completion(ser,cleaned_line):
+def wait_for_movement_completion(ser, cleaned_line):
 
     Event().wait(1)
 
-    if cleaned_line != '$X' or '$$':
+    if cleaned_line not in ('$X', '$$'):
 
         idle_counter = 0
 
         while True:
 
-            # Event().wait(0.01)
-            ser.reset_input_buffer()
-            command = str.encode('?' + '\n')
-            ser.write(command)
-            grbl_out = ser.readline() 
-            grbl_response = grbl_out.strip().decode('utf-8')
+            Event().wait(0.05)
+            ser.write(b'?')
+            grbl_out = ser.readline()
+            grbl_response = grbl_out.strip().decode('utf-8', errors='ignore')
+
+            if not grbl_response:
+                continue
+
+            if grbl_response.lower().startswith('alarm') or 'Alarm' in grbl_response:
+                raise RuntimeError(
+                    f"GRBL reported an ALARM while waiting for the '{cleaned_line}' move: {grbl_response}. "
+                    f"The machine likely hit a limit switch or encountered an error. "
+                    f"Check the machine, then clear the alarm ($X) before proceeding."
+                )
 
             if grbl_response != 'ok':
-
-                if grbl_response.find('Idle') > 0:
+                if 'Idle' in grbl_response:
                     idle_counter += 1
+                else:
+                    idle_counter = 0
 
             if idle_counter > 10:
                 break
@@ -1059,37 +1090,6 @@ def stream_gcode(ser, gcode_path):
                 wait_for_movement_completion(ser, cleaned)
                 print(" ->", ser.readline().strip().decode())
         print("End of file")
-
-"""
-def stream_gcode_list(ser, gcode_lines):
-    for line in gcode_lines:
-        cleaned = remove_eol_chars(remove_comment(line))
-        if not cleaned:
-            continue
-
-        print("Sending:", cleaned)
-        ser.write((cleaned + '\n').encode('ascii'))
-        ser.flush()
-
-        # Komendy ruchu / homing / probing
-        if cleaned == '$H' or cleaned.startswith('G38.2') or cleaned.startswith('G0') or cleaned.startswith('G1') or cleaned.startswith('G2') or cleaned.startswith('G3'):
-            wait_for_movement_completion(ser, cleaned)
-            continue
-
-        # Reszta: tylko czekaj na "ok"
-        while True:
-            resp = ser.readline().strip().decode('utf-8', errors='ignore')
-            if not resp:
-                continue
-            print(" ->", resp)
-            if resp.lower() == 'ok':
-                break
-            if resp.lower().startswith('error') or resp.lower().startswith('alarm'):
-                raise RuntimeError(f"GRBL błąd po '{cleaned}': {resp}")
-
-    print("End of list")
-    
-"""
 
 def stream_gcode_list(ser, gcode_lines):
     """Wyślij G-code z listy linia po linii."""
@@ -1115,7 +1115,7 @@ def stream_gcode_list(ser, gcode_lines):
             if resp.lower() == 'ok':
                 break
             if resp.lower().startswith('error') or resp.lower().startswith('alarm'):
-                raise RuntimeError(f"GRBL błąd po '{cleaned}': {resp}")
+                raise RuntimeError(f"GRBL error after '{cleaned}': {resp}")
 
     print("End of list")
 
@@ -1130,18 +1130,18 @@ def choose_serial_port():
             ports = usb_ports
 
     if not ports:
-        print("Nie wykryto żadnych portów szeregowych!")
+        print("No serial ports detected!")
         exit(1)
 
-    print("Dostępne porty szeregowe:")
+    print("Available serial ports:")
     for i, p in enumerate(ports):
         print(f"  [{i}] {p.device} — {p.description}")
 
     try:
-        idx = int(input(f"Wybierz port (0–{len(ports)-1}): "))
+        idx = int(input(f"Select port (0–{len(ports)-1}): "))
         return ports[idx].device
     except (ValueError, IndexError):
-        print("Nieprawidłowy wybór.")
+        print("Invalid selection.")
         exit(1)
 
 def choose_gcode_file():
@@ -1149,11 +1149,11 @@ def choose_gcode_file():
     root = tk.Tk()
     root.withdraw()  # nie pokazuj głównego okna Tk
     file_path = filedialog.askopenfilename(
-        title="Wybierz plik G-code",
+        title="Select a G-code file",
         filetypes=[("G-code files", "*.nc *.gcode"), ("Wszystkie pliki", "*.*")]
     )
     if not file_path:
-        print("Nie wybrano pliku.")
+        print("No file selected.")
         exit(1)
     return file_path
 
@@ -1220,10 +1220,10 @@ def parse_dimensions(infile):
                 break
 
         if unit is None:
-            print(f"[{infile}] Ostrzeżenie: nie wykryto jednostek w nagłówku, przyjmuję MM.", file=sys.stderr)
+            print(f"[{infile}] Warning: no units detected in the header; assuming MM.", file=sys.stderr)
             unit = "MM"
         if dec_digits is None:
-            print(f"[{infile}] Ostrzeżenie: nie wykryto formatu, przyjmuję 5 miejsc po przecinku.", file=sys.stderr)
+            print(f"[{infile}] Warning: format not detected; defaulting to 5 decimal places.", file=sys.stderr)
             dec_digits = 5
 
         return is_drill, unit, dec_digits
@@ -1268,10 +1268,10 @@ def parse_dimensions(infile):
                     ymin = min(ymin, y)
                     ymax = max(ymax, y)
                 except Exception as e:
-                    print(f"[{infile}] Błąd parsowania linii {lineno}: '{line}' → {e}", file=sys.stderr)
+                    print(f"[{infile}] Line parsing error {lineno}: '{line}' → {e}", file=sys.stderr)
 
             if xmin == float("inf"):
-                print(f"[{infile}] Nie znaleziono żadnych współrzędnych X/Y.", file=sys.stderr)
+                print(f"[{infile}] No X/Y coordinates were found.", file=sys.stderr)
                 return 0.0, 0.0
 
             return xmax - xmin, ymax - ymin
@@ -1418,7 +1418,7 @@ def parse_dimensions(infile):
                 x = x_raw / scale * unit_mm
                 y = y_raw / scale * unit_mm
             except Exception as e:
-                print(f"[{infile}] Błąd parsowania linii {lineno}: '{s}' → {e}", file=sys.stderr)
+                print(f"[{infile}] Line parsing error {lineno}: '{s}' → {e}", file=sys.stderr)
                 continue
 
             mop = dcode_re.search(s)
@@ -1448,7 +1448,7 @@ def parse_dimensions(infile):
                 continue
 
         if xmin == float("inf"):
-            print(f"[{infile}] Nie znaleziono żadnych współrzędnych X/Y.", file=sys.stderr)
+            print(f"[{infile}] No X/Y coordinates were found.", file=sys.stderr)
             return 0.0, 0.0
 
         width = xmax - xmin
@@ -1456,11 +1456,11 @@ def parse_dimensions(infile):
         return width, height
 
     except FileNotFoundError:
-        print(f"[{infile}] Błąd: plik nie istnieje.", file=sys.stderr)
+        print(f"[{infile}] Error: file does not exist.", file=sys.stderr)
     except PermissionError:
-        print(f"[{infile}] Błąd: brak praw dostępu.", file=sys.stderr)
+        print(f"[{infile}] Error: insufficient access rights.", file=sys.stderr)
     except Exception as e:
-        print(f"[{infile}] Nieoczekiwany błąd: {e}", file=sys.stderr)
+        print(f"[{infile}] Unexpected error: {e}", file=sys.stderr)
 
     return 0.0, 0.0
 
@@ -1490,7 +1490,7 @@ def probe_point(ser, x, y, zlevelmax, zlevelmin, levelfeed):
     start_time = time.time()
     # read until PRB: or timeout
     while time.time() - start_time < 10:
-        line = ser.readline().strip().decode('utf-8')
+        line = ser.readline().strip().decode('utf-8', errors='ignore')
         if not line:
             continue
         print(" ->", line)
@@ -1538,7 +1538,7 @@ def determine_z_zero(ser, feed1_0, retract_0, feed2_0):
     z1 = None
     start = time.time()
     while True:
-        raw = ser.readline().strip().decode('utf-8')
+        raw = ser.readline().strip().decode('utf-8', errors='ignore')
         if not raw:
             continue
         print(" ->", raw)
@@ -1558,7 +1558,7 @@ def determine_z_zero(ser, feed1_0, retract_0, feed2_0):
     z2 = None
     start = time.time()
     while True:
-        raw = ser.readline().strip().decode('utf-8')
+        raw = ser.readline().strip().decode('utf-8', errors='ignore')
         if not raw:
             continue
         print(" ->", raw)
@@ -1646,10 +1646,10 @@ def batch_apply_levels(gcode_paths):
         out = f"{base}_leveled{ext}"
         print(f"Leveling {path} → {out}")
         apply_height_to_gcode(path, out, interp)
-    print("Gotowe: wszystkie pliki _leveled")
+    print("Done: all _leveled files")
     
 
-def stream_gcode_file_pipelined(ser, gcode_path, parser_buffer=127, timeout_s=10.0):
+def stream_gcode_file_pipelined(ser, gcode_path, parser_buffer=127, timeout_s=60.0):
     """
     Wysyła G-code z pliku, pilnując kolejki wysłanych linii.
     Jeśli pojedyncza linia jest dłuższa niż parser_buffer, wysyła ją osobno
@@ -1657,12 +1657,21 @@ def stream_gcode_file_pipelined(ser, gcode_path, parser_buffer=127, timeout_s=10
     """
     pending_lengths = deque()
     pending_bytes = 0
+    warned_once = {"flag": False}  # ostrzeż tylko raz na cały plik, nie przy każdym oczekiwaniu
 
     def read_one_response():
         start = time.time()
         while True:
-            if time.time() - start > timeout_s:
+            elapsed = time.time() - start
+            if elapsed > timeout_s:
                 return None
+            if elapsed > 5.0 and not warned_once["flag"]:
+                # Zniwelowany (leveled) G-code ma dużo więcej, krótszych segmentów niż
+                # zwykły plik — GRBL na Arduino Nano potrafi legalnie "zapchać się"
+                # na dłużej niż kilka sekund przy gęstych ścieżkach/wolnym posuwie.
+                # To ostrzeżenie informuje, że program wciąż czeka, a nie wisi.
+                print(f"[info] I'm already waiting for a response from GRBL for {elapsed:.0f}s — The machine is likely just processing dense segments; the program has not frozen. (This message will appear only once.)")
+                warned_once["flag"] = True
             raw = ser.readline()
             if not raw:
                 continue
@@ -1673,7 +1682,7 @@ def stream_gcode_file_pipelined(ser, gcode_path, parser_buffer=127, timeout_s=10
             if low == "ok":
                 return "ok"
             if low.startswith("error") or low.startswith("alarm"):
-                raise RuntimeError(f"GRBL zwrócił błąd: {resp}")
+                raise RuntimeError(f"GRBL return an error: {resp}")
             # inne wiadomości ignorujemy
 
     with open(gcode_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -1688,20 +1697,20 @@ def stream_gcode_file_pipelined(ser, gcode_path, parser_buffer=127, timeout_s=10
             # jeśli jedna linia jest większa niż bufor, nie próbuj "pipeliningu"
             # dla niej — wyślij ją osobno i poczekaj na ok
             if length > parser_buffer:
-                print(f"[WARN] Linia ma {length} bajtów, więcej niż parser_buffer={parser_buffer}: {line}")
+                print(f"[WARN] Line has {length} bytes, more than parser_buffer={parser_buffer}: {line}")
                 ser.write(payload)
                 ser.flush()
 
                 resp = read_one_response()
                 if resp != "ok":
-                    raise TimeoutError("Timeout lub brak 'ok' po wysłaniu długiej linii G-code.")
+                    raise TimeoutError("Timeout or no 'ok' response after sending a long G-code line.")
                 continue
 
             # czekaj tylko wtedy, gdy faktycznie mamy już coś w locie
             while pending_lengths and pending_bytes + length > parser_buffer:
                 resp = read_one_response()
                 if resp is None:
-                    raise TimeoutError("Timeout czekania na odpowiedź 'ok' od GRBL.")
+                    raise TimeoutError("Timeout waiting for 'ok' response from GRBL.")
                 if resp == "ok":
                     pending_bytes -= pending_lengths.popleft()
                     if pending_bytes < 0:
@@ -1716,13 +1725,57 @@ def stream_gcode_file_pipelined(ser, gcode_path, parser_buffer=127, timeout_s=10
     while pending_lengths:
         resp = read_one_response()
         if resp is None:
-            raise TimeoutError("Timeout podczas opróżniania bufora GRBL po wysłaniu pliku.")
+            raise TimeoutError("Timeout while flushing the GRBL buffer after sending the file.")
         if resp == "ok":
             pending_bytes -= pending_lengths.popleft()
             if pending_bytes < 0:
                 pending_bytes = 0
 
     print("End of file (pipelined)")
+
+def _resize_for_display(img, max_dim=900):
+    """Skaluje obraz do podglądu tak, by żaden bok nie przekraczał max_dim px
+    (zachowując proporcje). Bardzo duże obrazy (np. z kamery górnej) potrafią
+    powodować, że okno OpenCV nie wyrenderuje się poprawnie na niektórych
+    konfiguracjach (zwłaszcza Wayland) i waitKey wraca natychmiast bez realnego
+    naciśnięcia klawisza — stąd wrażenie, że zdjęcia 'przelatują' błyskawicznie."""
+    h, w = img.shape[:2]
+    scale = max_dim / max(h, w)
+    if scale >= 1.0:
+        return img
+    return cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
+def _show_rotation_grid_and_choose(variants, prompt_prefix="Enter rotation (0/90/180/270): "):
+    """
+    Pokazuje 4 warianty obrotu (0/90/180/270) jako jeden złożony obraz — przez
+    matplotlib, a nie cv2.imshow. Okazało się, że to konkretnie OpenCV-HighGUI (Qt)
+    ma trwały konflikt z backendem strumienia sieciowego górnej kamery w tym
+    środowisku (waitKey zaczynał zwracać ten sam kod za każdym razem, niezależnie
+    od liczby okien). Matplotlib używa zupełnie innego mechanizmu okien — tego
+    samego, którego już niezawodnie używają "Kalibracja kolorów" i "kalibracja rogów".
+    """
+    disp = [_resize_for_display(v, max_dim=500) for _, v in variants]
+    h = max(im.shape[0] for im in disp)
+    w = max(im.shape[1] for im in disp)
+    padded = []
+    for (deg, _), im in zip(variants, disp):
+        canvas = np.zeros((h + 30, w, 3), dtype=np.uint8)
+        canvas[30:30 + im.shape[0], 0:im.shape[1]] = im
+        cv2.putText(canvas, f"{deg} deg", (5, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        padded.append(canvas)
+    top_row = np.hstack([padded[0], padded[1]])
+    bottom_row = np.hstack([padded[2], padded[3]])
+    grid_bgr = np.vstack([top_row, bottom_row])
+    grid_rgb = cv2.cvtColor(grid_bgr, cv2.COLOR_BGR2RGB)
+
+    fig, ax = plt.subplots(figsize=(9, 6.5))
+    ax.imshow(grid_rgb)
+    ax.set_title("Select the rotation (labeled on the image) and close the window.")
+    ax.axis('off')
+    plt.show()
+
+    choice = input(prompt_prefix).strip()
+    return choice
 
 def rotate_image(img, deg):
     """Szybka rotacja o 0/90/180/270 stopni; dla innych kątów używa warpAffine."""
@@ -1884,7 +1937,7 @@ def detect_nozzle_pixel(img_bgr, debug_show=False, expected_radius_px=None):
         except:
             pass
         cv2.imshow(win, vis)
-        print("Wybrano punkt:", (cx,cy), "score:", best["score"])
+        print("Point selected:", (cx,cy), "score:", best["score"])
         cv2.waitKey(0)
         time.sleep(3)
         cv2.destroyWindow(win)
@@ -1903,28 +1956,28 @@ def pnpp_calibrate_tool_offset(ser, tol_mm=0.1, max_iter=12, show_debug=False):
     cfg = configparser.ConfigParser()
     cfg.read(CONFIG_FILE)
     if "Connection" not in cfg:
-        raise RuntimeError("Brak sekcji [Connection] w config.ini — ustaw camera_up_x_mm i camera_up_y_mm")
+        raise RuntimeError("Missing [Connection] section in config.ini — set camera_up_x_mm and camera_up_y_mm")
     conn = cfg["Connection"]
     try:
         tgt_x = float(conn.get("camera_up_x_mm"))
         tgt_y = float(conn.get("camera_up_y_mm"))
     except Exception:
-        raise RuntimeError("Brak camera_up_x_mm / camera_up_y_mm w sekcji [Connection]. Ustaw je (pozycja kamery w mm).")
+        raise RuntimeError("Missing camera_up_x_mm / camera_up_y_mm in the [Connection] section. Set them (camera position in mm)..")
 
     cumulative_dx = 0.0
     cumulative_dy = 0.0
 
     for it in range(1, max_iter+1):
-        print(f"[PnP calib] iteracja {it}/{max_iter} — robie zdjecie kamery up...")
+        print(f"[PnP calib] iteration {it}/{max_iter} — taking a picture with the up camera)
         capture_write_unified("pnp_calib.jpeg", camera='up')
         img = cv2.imread("pnp_calib.jpeg", cv2.IMREAD_COLOR)
         if img is None:
-            raise RuntimeError("Nie udało się wczytać pnp_calib.jpeg")
+            raise RuntimeError("Failed to load pnp_calib.jpeg")
 
         # wykryj nozle na obrazie (pixel coords)
         detected = detect_nozzle_pixel(img, debug_show=show_debug)
         if detected is None:
-            print("Nie wykryto końcówki na zdjęciu. Popraw pozycję i spróbuj ponownie.")
+            print("No tip detected in the photo. Adjust the position and try again.")
             return False
 
         px_x, px_y = detected  # (col, row)
@@ -1949,12 +2002,12 @@ def pnpp_calibrate_tool_offset(ser, tol_mm=0.1, max_iter=12, show_debug=False):
             cv2.destroyWindow("pnp calib detect")
 
         if dist <= tol_mm:
-            print(f"[PnP calib] osiągnięto tolerancję {tol_mm} mm. Koniec.")
+            print(f"[PnP calib] achieved {tol_mm} mm tolerance. Finished.")
             break
 
         # wykonaj korekcyjny ruch względny (G91)
         cmd = f"G91 G01 X{ddx:.4f} Y{ddy:.4f} F10"
-        print("[PnP calib] Wysyłam korekcyjny ruch:", cmd)
+        print("[PnP calib] Sending a corrective movement.:", cmd)
         stream_gcode_list(ser, [cmd])
         # powróć do trybu bezwzględnego
         stream_gcode_list(ser, ["G90"])
@@ -1971,7 +2024,7 @@ def pnpp_calibrate_tool_offset(ser, tol_mm=0.1, max_iter=12, show_debug=False):
     conn["pnp_offset_y_mm"] = str(prev_y + cumulative_dy)
     with open(CONFIG_FILE, "w") as f:
         cfg.write(f)
-    print(f"[PnP calib] zapisano pnp_offset_x_mm={conn['pnp_offset_x_mm']} pnp_offset_y_mm={conn['pnp_offset_y_mm']} do {CONFIG_FILE}")
+    print(f"[PnP calib] saved pnp_offset_x_mm={conn['pnp_offset_x_mm']} pnp_offset_y_mm={conn['pnp_offset_y_mm']} do {CONFIG_FILE}")
     return True
 
 def read_up_corners_from_config():
@@ -2014,11 +2067,11 @@ def save_up_corners_to_config(corners):
     cfg["Connection"]["camera_up_corners"] = s
     with open(CONFIG_FILE, "w") as f:
         cfg.write(f)
-    print(f"Zapisano 4 rogi kamery up do {CONFIG_FILE} (camera_up_corners).")
+    print(f"Saved 4 camera corners to {CONFIG_FILE} (camera_up_corners).")
 
 def calibrate_up_via_tool(ser,
                           corner_machine_coords=None,
-                          z_focus=-29.05,
+                          z_focus=-24,
                           camera='up',
                           ramp_frames=30,
                           auto_detect=True,
@@ -2034,33 +2087,33 @@ def calibrate_up_via_tool(ser,
     if corner_machine_coords is None:
         corner_machine_coords = read_up_corners_from_config()
         if corner_machine_coords is None:
-            print("Brak cornerów w configu. Podaj 4 punkty ręcznie (x,y) oddzielone przecinkiem, lub przerwij.")
+            print("Corners missing from the config. Manually provide 4 points (x, y) separated by commas, or abort.")
             corner_machine_coords = []
             for i in range(4):
-                val = input(f"Podaj wspolrzedne punktu {i+1} jako 'X,Y' (Enter by przerwać): ").strip()
+                val = input(f"Provide the coordinates of the point. {i+1} as 'X,Y' (press enter to abort): ").strip()
                 if not val:
-                    print("Przerwano wprowadzanie cornerów.")
+                    print("Aborted entering corners.")
                     return False
                 try:
                     x_s, y_s = val.split(',')
                     corner_machine_coords.append((float(x_s), float(y_s)))
                 except Exception as e:
-                    print("Niepoprawny format. Spróbuj ponownie.")
+                    print("Invalid format. Please try again.")
                     return False
             # zapisz do configu, bo to przydatne
             save_up_corners_to_config(corner_machine_coords)
 
     if len(corner_machine_coords) != 4:
-        raise ValueError("corner_machine_coords musi mieć 4 punkty (x,y)")
+        raise ValueError("corner_machine_coords must have 4 points (x,y)")
 
     src_pixels = []
     dst_mm = []
 
-    print("Upewnij się, że przed kalibracją ustawiłeś camera_up_rotation_deg poprawnie.")
-    input("Naciśnij Enter aby kontynuować...")
+    print("Make sure you have set camera_up_rotation_deg correctly before calibration.")
+    input("Press Enter to contiune...")
 
     for idx, (mx, my) in enumerate(corner_machine_coords, start=1):
-        print(f"\n--- Punkt kalibracji {idx}/4: X{mx} Y{my} Z{z_focus} ---")
+        print(f"\n--- Calibration point {idx}/4: X{mx} Y{my} Z{z_focus} ---")
         # przejedź do punktu i ustaw Z (jeśli chcesz, możesz tu pominąć, bo robisz to wcześniej)
         stream_gcode_list(ser, [f"G90 G01 X{mx} Y{my} F1000"])
         stream_gcode_list(ser, [f"G90 G0 Z{z_focus}"])
@@ -2070,7 +2123,7 @@ def calibrate_up_via_tool(ser,
         capture_write_unified(filename=fname, camera=camera, ramp_frames=ramp_frames)
         img = cv2.imread(fname, cv2.IMREAD_COLOR)
         if img is None:
-            print("Nie wczytano obrazu:", fname)
+            print("Image not loaded:", fname)
             return False
 
         chosen_px = None
@@ -2085,7 +2138,7 @@ def calibrate_up_via_tool(ser,
                 cv2.putText(vis, f"Auto: ({px},{py})", (10,20),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
-                winname = "Auto-detekcja: zaakceptuj (t/n)"
+                winname = "Auto-detection: accept (t/n)"
                 # stwórz okno, ustaw rozmiar adekwatny do obrazu, żeby nie było miniaturowe
                 cv2.namedWindow(winname, cv2.WINDOW_NORMAL)
                 h_img, w_img = vis.shape[:2]
@@ -2095,7 +2148,7 @@ def calibrate_up_via_tool(ser,
                     pass
                 cv2.imshow(winname, vis)
 
-                print("W oknie obrazu naciśnij: 't' aby zaakceptować, 'n' aby odrzucić (ESC też = odrzuć).")
+                print("In the image window, press: 't' to accept, 'n' to reject (ESC also = reject).")
                 # czekaj na klawisz w oknie (blokujące waitKey)
                 while True:
                     k = cv2.waitKey(0) & 0xFF
@@ -2110,12 +2163,12 @@ def calibrate_up_via_tool(ser,
                 if key == 't':
                     chosen_px = (int(px), int(py))
                 else:
-                    print("Odrzucono autodetekcję — przejdź do ręcznego wyboru.")
+                    print("Auto-detection rejected — proceed to manual selection.")
             else:
-                print("Autodetekcja nie powiodła się.")
+                print("Autodetection failed.")
         # ręczne kliknięcie jeśli autodetekcja nie zaakceptowana
         if chosen_px is None and allow_manual_click:
-            print("Kliknij na obrazie dokładne miejsce czubka frezu (zamknij okno po wyborze).")
+            print("Click the exact location of the cutter tip on the image (close the window after making your selection).")
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             fig, ax = plt.subplots(figsize=(6,6))
             ax.imshow(img_rgb)
@@ -2130,14 +2183,14 @@ def calibrate_up_via_tool(ser,
             fig.canvas.mpl_connect('button_press_event', onclick)
             plt.show()
             if not pts:
-                print("Nie wybrano punktu. Przerywam kalibrację.")
+                print("No point selected. Aborting calibration.")
                 return False
             px, py = pts[0]
             chosen_px = (int(round(px)), int(round(py)))
-            print(f"Wybrano pixel = {chosen_px}")
+            print(f"Chose pixel = {chosen_px}")
 
         if chosen_px is None:
-            print("Brak punktu do zapisania. Przerywam.")
+            print("No point to save. Aborting")
             return False
 
         # zapisz parę pixel -> machine
@@ -2150,8 +2203,8 @@ def calibrate_up_via_tool(ser,
     dst_np = np.array(dst_mm, dtype=np.float32)
     H = cv2.getPerspectiveTransform(src_np, dst_np)
     np.save(CALIBRATION_FILE_UP, H)
-    print(f"Zapisano homografię kamery 'up' do {CALIBRATION_FILE_UP}")
-    input("Naciśnij enter aby kontynuować...")
+    print(f"Camera homography 'up' saved to {CALIBRATION_FILE_UP}")
+    input("Press Enter to continue...")
     cls()
     return True
 
@@ -2159,11 +2212,11 @@ def calibrate_up_via_tool(ser,
 config, saved_port, saved_ip, saved_up_ip = load_config()
 
 if saved_port or saved_ip:
-    print("Znaleziono zapisane połączenia:")
-    print(f"  Port szeregowy: {saved_port or '<brak>'}")
-    print(f"  Kamera górna:      {saved_ip or '<brak>'}")
-    print(f"  Kamera w blacie:      {saved_up_ip or '<brak>'}")
-    odp = input("Czy chcesz spróbować przywrócić te połączenia? (t/n): ").lower()
+    print("Saved connections found:")
+    print(f"  Serial port: {saved_port or '<brak>'}")
+    print(f"  Upper camera:      {saved_ip or '<brak>'}")
+    print(f"  Camera in the bed:      {saved_up_ip or '<brak>'}")
+    odp = input("Do you want to try restoring these connections? (t/n): ").lower()
     if odp == "t":
         start_sender()
         # próba połączenia z maszyną
@@ -2171,10 +2224,10 @@ if saved_port or saved_ip:
             try:
                 ser = serial.Serial(saved_port, BAUD_RATE, timeout=1)
                 send_wake_up(ser)
-                print(f"✅ Połączono z maszyną na porcie {saved_port}")
+                print(f"✅ Connected to the machine on port {saved_port}")
                 polaczenie += 1
             except Exception as e:
-                print(f"❌ Nie udało się otworzyć portu {saved_port}: {e}")
+                print(f"❌ Failed to open the port {saved_port}: {e}")
         # próba połączenia z kamerą
         if saved_ip:
             try:
@@ -2236,13 +2289,13 @@ if saved_port or saved_ip:
 
                 cap = _open_capture(camera_src)
                 if cap is None:
-                    print(f"❌ Nie udało się otworzyć kamery pod: {camera_src}")
+                    print(f"❌ Failed to open the camera on: {camera_src}")
                 else:
                     # spróbuj odczytać jedną klatkę
                     ret, _ = cap.read()
                     cap.release()
                     if ret:
-                        print(f"✅ Połączono z kamerą pod adresem {camera_src}")
+                        print(f"✅ Connected to the camera at the {camera_src} address")
                         polaczenie += 1
                         # zachowaj stare zachowanie: przypisz ip tylko jeśli źródło to URL
                         if str(camera_src).startswith("http"):
@@ -2251,9 +2304,9 @@ if saved_port or saved_ip:
                             # możesz zapisać w zmiennej camera_source, aby później używać jej
                             camera_source = camera_src
                     else:
-                        print(f"❌ Kamera nie odpowiedziała na {camera_src}")
+                        print(f"❌ The camera did not respond on {camera_src}")
             except Exception as e:
-                print(f"❌ Błąd przy łączeniu z kamerą: {e}")
+                print(f"❌ Error connecting to the camera: {e}")
         if saved_up_ip:
             try:
                 # saved_ip może być dotychczasowym "http://..." albo (po zmianie) może
@@ -2314,13 +2367,13 @@ if saved_port or saved_ip:
 
                 cap = _open_capture(camera_src)
                 if cap is None:
-                    print(f"❌ Nie udało się otworzyć kamery pod: {camera_src}")
+                    print(f"❌ Failed to open the camera on: {camera_src}")
                 else:
                     # spróbuj odczytać jedną klatkę
                     ret, _ = cap.read()
                     cap.release()
                     if ret:
-                        print(f"✅ Połączono z kamerą pod adresem {camera_src}")
+                        print(f"✅ Connected to the camera at the {camera_src} address")
                         polaczenie += 1
                         # zachowaj stare zachowanie: przypisz ip tylko jeśli źródło to URL
                         if str(camera_src).startswith("http"):
@@ -2329,18 +2382,18 @@ if saved_port or saved_ip:
                             # możesz zapisać w zmiennej camera_source, aby później używać jej
                             camera_source = camera_src
                     else:
-                        print(f"❌ Kamera nie odpowiedziała na {camera_src}")
+                        print(f"❌ The camera did not respond on {camera_src}")
             except Exception as e:
-                print(f"❌ Błąd przy łączeniu z kamerą w blacie: {e}")
+                print(f"❌ Error connecting to the camera in the bed: {e}")
         if not is_connected():
             time.sleep(5)
             if not is_connected():
-                print("Błąd połączenia bezprzewodowego z rpi")
+                print("Wireless connection error with RPi")
             else:
-                print(f"✅ Połączono bezprzewodowo z malinką")
+                print(f"✅ Connected wirelessly to the Raspberry Pi.")
         else:
-            print(f"✅ Połączono bezprzewodowo z malinką")
-        input("Naciśnij Enter, aby kontynuować...")
+            print(f"✅ Connected wirelessly to the Raspberry Pi.")
+        input("Press Enter to contiune...")
 
 
 def _normalize_angle_deg(a):
@@ -3045,7 +3098,7 @@ def parse_pick_and_place(path):
     except Exception:
         pass
 
-    raise RuntimeError("Nie wykryto współrzędnych w pliku PnP.")
+    raise RuntimeError("No coordinates detected in the PnP file.")
 
 # ---- poprawiona parse_pick_and_place_auto (wybór parsera) ----
 def parse_pick_and_place_auto(path):
@@ -3208,7 +3261,7 @@ def show_parts_and_ask_label(placements, detected_parts, img=None, window_name="
         cleaned.append({**d, 'px': float(px), 'py': float(py), 'det_idx': i})
     detected_parts = cleaned
     if not detected_parts:
-        raise RuntimeError("Brak wykrytych części po normalizacji.")
+        raise RuntimeError("No parts detected after normalization.")
 
     def make_visual(idx_highlight=None):
         vis = vis_base.copy()
@@ -3269,15 +3322,15 @@ def show_parts_and_ask_label(placements, detected_parts, img=None, window_name="
             cv2.imshow(window_name, make_visual())
             continue
         if key in (ord('p'), ord('P')):
-            idxs = input("Podaj indeks detekcji do podglądu: ").strip()
+            idxs = input("Enter the detection index for preview:").strip()
             try:
                 ii = int(idxs)
                 if 0 <= ii < len(detected_parts):
                     cv2.imshow(window_name, make_visual(idx_highlight=ii))
                 else:
-                    print("Indeks poza zakresem.")
+                    print("Index out of range.")
             except:
-                print("Nieprawidłowy indeks.")
+                print("Incorrect index.")
             continue
         # inne klawisze ignorujemy i kontynuujemy pętlę
 
@@ -3286,11 +3339,11 @@ def show_parts_and_ask_label(placements, detected_parts, img=None, window_name="
     except:
         pass
 
-    print("\n--- Interaktywne przypisanie detekcji do pozycji PnP ---")
-    print("Instrukcje:")
-    print(" - Dla każdego placementu wpisz numer wykrytej części (np. 0,1,2...).")
-    print(" - Możesz wpisać 'v' aby ponownie obejrzeć pełny widok, 'p' by podejrzeć pojedynczą detekcję, 's' aby pominąć placement.")
-    print(" - Po wpisaniu numeru naciśnij Enter.\n")
+    print("\n---  Interactive assignment of detection to a PnP position---")
+    print("Instructions:")
+    print(" - For each placement, enter the number of the detected part (e.g., 0, 1, 2...).")
+    print(" - You can type 'v' to view the full view again, 'p' to preview a single detection, or 's' to skip the placement.")
+    print(" - Press Enter after entering the number..\n")
 
     results = []
     for pi, plc in enumerate(placements):
@@ -3298,7 +3351,7 @@ def show_parts_and_ask_label(placements, detected_parts, img=None, window_name="
         fp = plc.get('footprint','')
         print(f"\nPlacement {pi}: ref='{ref}' footprint='{fp}' x={plc.get('x')} y={plc.get('y')}")
         while True:
-            ans = input(f"  Wpisz indeks detekcji (0..{len(detected_parts)-1}), 'v' pokaz, 'p' podgląd idx, 's' skip: ").strip().lower()
+            ans = input(f"  Enter the detection index (0..{len(detected_parts)-1}), 'v' show, 'p' preview idx, 's' skip: ").strip().lower()
             if ans == 'v':
                 # pokaż pełny widok i czekaj na klawisz w oknie
                 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
@@ -3310,7 +3363,7 @@ def show_parts_and_ask_label(placements, detected_parts, img=None, window_name="
                 except: pass
                 continue
             if ans == 'p':
-                idxs = input("  Podaj indeks detekcji do podglądu: ").strip()
+                idxs = input("  Specify the detection index for preview.: ").strip()
                 try:
                     ii = int(idxs)
                     if 0 <= ii < len(detected_parts):
@@ -3322,26 +3375,26 @@ def show_parts_and_ask_label(placements, detected_parts, img=None, window_name="
                         try: cv2.destroyWindow(window_name)
                         except: pass
                     else:
-                        print("  Indeks poza zakresem.")
+                        print("  Index out of range.")
                 except:
-                    print("  Nieprawidłowy indeks.")
+                    print("  Incorrect index.")
                 continue
             if ans == 's' or ans == '':
-                print("  Pomijasz ten placement.")
+                print("  You're skipping this placement.")
                 mapped = None
                 break
             # numeric selection
             try:
                 idx = int(ans)
                 if idx < 0 or idx >= len(detected_parts):
-                    print("  Indeks poza zakresem.")
+                    print("  Index out of range.")
                     continue
                 d = detected_parts[idx]
                 mapped = {'ref': ref, 'footprint': fp, 'px': float(d['px']), 'py': float(d['py']), 'area': d.get('area'), 'det_idx': idx}
-                print(f"  Zmapowano placement '{ref}' -> det #{idx} at ({mapped['px']:.1f},{mapped['py']:.1f})")
+                print(f"  Mapped placement '{ref}' -> det #{idx} at ({mapped['px']:.1f},{mapped['py']:.1f})")
                 break
             except ValueError:
-                print("  Nieprawidłowy wpis. Podaj numer, 'p', 'v' albo 's'.")
+                print("  Invalid entry. Enter a number, 'p', 'v', or 's'.")
         if mapped:
             results.append(mapped)
 
@@ -3379,7 +3432,7 @@ def pnp_session_loop(pick_coords, placements, ser, camera_x, camera_y, pnp_z_zer
         # 1) PODJAZD nad pick (XY) i safe Z
         stream_gcode_list(ser, [f"G0 X{mx:.4f} Y{my:.4f}"])
         send_message(f"GO:{-pnp_z_zero}")
-        input("Sprwadź czy prawidłowo podniesiono element i naciśnij enter...")
+        input("Check that the component has been lifted correctly and press Enter...")
         send_message("PUMP_ON")
         time.sleep(0.2)  # chwila by złapać element
         send_message(f"GO:{pnp_z_zero}")
@@ -3390,13 +3443,13 @@ def pnp_session_loop(pick_coords, placements, ser, camera_x, camera_y, pnp_z_zer
             stream_gcode_list(ser, [f"G0 X{camera_x:.4f} Y{camera_y:.4f}"])
             send_message(f"GO:{-camera_distance}")
         else:
-            raise ValueError("brak koordynatów kamery")
+            raise ValueError("missing camera coordinates")
         # zrob capture i wykryj orientację
         capture_write_unified("pnp_up.jpg", camera='up')
         img_up = cv2.imread("pnp_up.jpg", cv2.IMREAD_COLOR)
         det = detect_component_orientation_up(img_up, debug_show=False)
         if det is None:
-            print(f"[WARN] Nie wykryto orientacji dla {ref}")
+            print(f"[WARN] No orientation detected for {ref}")
             angle_machine = 0.0
         else:
             angle_image = float(det.get('angle_image', 0.0))
@@ -3416,7 +3469,7 @@ def pnp_session_loop(pick_coords, placements, ser, camera_x, camera_y, pnp_z_zer
                 break
         if place_entry is None:
             # fallback: bierz pierwszą nie przypisaną pozycję (lub zrób skip)
-            print(f"[WARN] Nie znaleziono wpisu PnP dla {ref}. Pomijam.")
+            print(f"[WARN] No PnP entry found for {ref}. Skipping.")
             send_message("PUMP_OFF"); continue
 
         # oblicz coords place (masz) = xa,ya + place_entry.x/y  (jeśli już masz xa,ya globalne)
@@ -3475,7 +3528,7 @@ def parts_pixels_to_machine(parts_px, camera='top', homography=None, add_offset_
     Rzuca RuntimeError jeżeli nie uda się uzyskać macierzy homografii lub brakuje współrzędnych pikselowych.
     """
     if not isinstance(parts_px, (list,tuple)):
-        raise ValueError("parts_px musi być listą słowników.")
+        raise ValueError("parts_px must be a list of dictionaries.")
 
     cfg = configparser.ConfigParser(); cfg.read(CONFIG_FILE)
     conn = cfg["Connection"] if "Connection" in cfg else {}
@@ -3502,7 +3555,7 @@ def parts_pixels_to_machine(parts_px, camera='top', homography=None, add_offset_
         idx_map.append(len(pts)-1)
 
     if not pts:
-        raise RuntimeError("Brak poprawnych współrzędnych pikselowych w parts_px.")
+        raise RuntimeError("Missing correct pixel coordinates in parts_px.")
 
     pts_np = np.array(pts, dtype=np.float32)  # shape (N,1,2)
 
@@ -3511,18 +3564,18 @@ def parts_pixels_to_machine(parts_px, camera='top', homography=None, add_offset_
         try:
             H = load_homography(camera=camera)   # zakładamy, że ta funkcja istnieje i zwraca 3x3
         except Exception as e:
-            raise RuntimeError(f"Nie udało się załadować homografii dla kamery '{camera}': {e}")
+            raise RuntimeError(f"Failed to load the homography for the camera. '{camera}': {e}")
     else:
         H = np.array(homography, dtype=np.float64)
 
     if H is None or H.shape[0] != 3 or H.shape[1] != 3:
-        raise RuntimeError("Homografia musi być macierzą 3x3.")
+        raise RuntimeError("The homography must be a 3x3 matrix..")
 
     # convert: pixel -> machine(mm)
     try:
         mm_pts = cv2.perspectiveTransform(pts_np, H)  # shape (N,1,2)
     except Exception as e:
-        raise RuntimeError(f"Błąd przy cv2.perspectiveTransform: {e}")
+        raise RuntimeError(f"Error on cv2.perspectiveTransform: {e}")
 
 
     # wypisz wyniki do kopi słowników
@@ -3734,14 +3787,14 @@ def display_detected_parts_interactive(img, detected_parts,
             cv2.imshow(window_name, make_vis())
             continue
         if key in (ord('p'), ord('P')):
-            s = input("Podaj indeks detekcji do powiększenia (liczba): ").strip()
+            s = input("Enter the detection index to zoom in on (number): ").strip()
             try:
                 idx = int(s)
             except:
-                print("niepoprawny indeks")
+                print("incorrect index")
                 continue
             if idx < 0 or idx >= len(detected_parts):
-                print("poza zakresem")
+                print("out of scope")
                 continue
             d = detected_parts[idx]
             bx,by,bw,bh = (d.get('bbox') or (int(d['px']-50), int(d['py']-50), 100, 100))
@@ -3767,17 +3820,39 @@ def display_detected_parts_interactive(img, detected_parts,
         pass
     return detected_parts
 
-def select_roi_interactive(img, window_name="Select ROI: drag then Enter/Space, c=cancel"):
+def select_roi_interactive(img, window_name="Select the ROI with the mouse and close the window to confirm (no selection = entire image)."):
     """
     Interaktywnie wybierz prostokąt ROI. Zwraca (x,y,w,h) lub None.
-    Używa cv2.selectROI (okno musi mieć focus; ESC/cancel -> (0,0,0,0)).
+    Używa matplotlib RectangleSelector zamiast cv2.selectROI — patrz komentarz
+    w _show_rotation_grid_and_choose wyżej w pliku: cv2-HighGUI ma trwały konflikt
+    z górną kamerą (strumień sieciowy) w tym środowisku.
     """
-    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-    roi = cv2.selectROI(window_name, img, showCrosshair=True, fromCenter=False)
-    cv2.destroyWindow(window_name)
-    if not roi or (roi[2] == 0 or roi[3] == 0):
+    from matplotlib.widgets import RectangleSelector
+
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    fig, ax = plt.subplots(figsize=(9, 7))
+    ax.imshow(img_rgb)
+    ax.set_title(window_name)
+
+    box = {}
+
+    def onselect(eclick, erelease):
+        x1, y1 = eclick.xdata, eclick.ydata
+        x2, y2 = erelease.xdata, erelease.ydata
+        if None in (x1, y1, x2, y2):
+            return
+        x, y = int(min(x1, x2)), int(min(y1, y2))
+        w, h = int(abs(x2 - x1)), int(abs(y2 - y1))
+        box['roi'] = (x, y, w, h)
+
+    selector = RectangleSelector(ax, onselect, useblit=True,
+                                  button=[1], interactive=True)
+    plt.show()
+
+    roi = box.get('roi')
+    if not roi or roi[2] == 0 or roi[3] == 0:
         return None
-    return tuple(map(int, roi))
+    return roi
 
 def debug_workbench_roi_pipeline(img, roi,
                                            canny=(20,80),
@@ -3795,7 +3870,7 @@ def debug_workbench_roi_pipeline(img, roi,
     Zwraca listę konturów znalezionych na etapie "closed" (w współrzędnych crop).
     """
     if roi is None:
-        print("ROI = None -> anulowano.")
+        print("ROI = None -> cancelled.")
         return []
     rx, ry, rw, rh = roi
     crop = img[ry:ry+rh, rx:rx+rw].copy()
@@ -3895,41 +3970,18 @@ def debug_workbench_roi_pipeline(img, roi,
         cv2.imwrite(fn, im)
     cv2.imwrite(f"{base}_full.png", full)
 
-    win = "DEBUG_WORKBENCH_ROI"
-    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
-    # domyślnie fullscreen (można togglować przy 'f')
-    cv2.setWindowProperty(win, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    cv2.imshow(win, full)
+    print("DEBUG: saved photos to:", save_dir)
 
-    print("DEBUG: zapisałem obrazy do:", save_dir)
-    print("Instrukcja w oknie debug:")
-    print("  SPACE/Enter - kontynuuj i wróć z wynikami")
-    print("  s - dodatkowo zapisz (już zapisano domyślnie)")
-    print("  f - toggle fullscreen")
-    print("  q - przerwij (KeyboardInterrupt)")
+    # Podgląd przez matplotlib zamiast cv2.imshow — patrz komentarz w _show_rotation_grid_and_choose
+    # wyżej w pliku: cv2-HighGUI ma trwały konflikt z górną kamerą (strumień sieciowy) w tym
+    # środowisku. Prosty model interakcji: zamknij okno aby kontynuować.
+    full_rgb = cv2.cvtColor(full, cv2.COLOR_BGR2RGB)
+    fig, ax = plt.subplots(figsize=(14, 7))
+    ax.imshow(full_rgb)
+    ax.set_title("crop | gray | clahe | blur | thresh | edges | closed | overlay — close the window to continue.")
+    ax.axis('off')
+    plt.show()
 
-    # pętla blokująca, obsługa klawiszy
-    fullscreen = True
-    while True:
-        k = cv2.waitKey(0)
-        if k in (13, 32):  # Enter or Space
-            break
-        if k in (ord('q'), 27):  # q lub Esc
-            cv2.destroyAllWindows()
-            raise KeyboardInterrupt("Użytkownik przerwał debug (q/Esc).")
-        if k == ord('f'):
-            fullscreen = not fullscreen
-            if fullscreen:
-                cv2.setWindowProperty(win, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-            else:
-                cv2.setWindowProperty(win, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
-            cv2.imshow(win, full)
-        if k == ord('s'):
-            # już zapisane, potwierdź
-            print("Zapisane (patrz katalog):", save_dir)
-            continue
-
-    cv2.destroyAllWindows()
     # zwróć kontury (wcrop coords)
     return cnts
 
@@ -4202,12 +4254,12 @@ zlevelmin = format_value(config['zlevelmin'])
 cut_z = format_value(config['cut_z'])
 while True:
     cls()
-    print("*Menu*\n1. Wygeneruj gcode\n2. Zmień ustawienia\n3. Kalibracja\n4. Połączenie\n5. Wyjście")
+    print("*Menu*\n1. Generate gcode\n2. Change settings\n3. Calibration\n4. Connection\n5. Exit")
     wybor = int(readchar.readchar())
     if wybor == 1:
         if polaczenie < 3:
-            print("Nie wybrano połączenia z maszyną lub jedną z kamer!")
-            input("Prosze nacisnac enter i w menu dokonać połączenia z obydwoma (teraz resetuje się licznik)")
+            print("No connection to the machine or one of the cameras has been selected!")
+            input("Please press Enter and connect to both via the menu (the counter is now resetting).")
             polaczenie = 0
         else:
             stream_gcode_list(ser, ["$X"])
@@ -4217,38 +4269,38 @@ while True:
             sciezki = {}
             # Wybór plików wejściowych
             for plik in pliki:
-                print(f"Czy chcesz wybrać plik {plik}? (t/n): ")
+                print(f"Do you want to choose the {plik} file? (t/n): ")
                 odp = str(readchar.readchar())
                 if odp.lower() == "t":
-                    sciezka = filedialog.askopenfilename(title=f"Wybierz plik {plik}")
+                    sciezka = filedialog.askopenfilename(title=f"Choose the {plik} file")
                     if sciezka:
                         sciezki[f"sciezka_{plik}"] = sciezka
                         gcode_paths.append(sciezka)
 
             # Dla poszczególnych warstw zapytaj użytkownika o miejsce zapisu plików NC
             if "sciezka_Górna warstwa" in sciezki:
-                front_output = filedialog.asksaveasfilename(title="Wybierz miejsce zapisu dla front.nc",
+                front_output = filedialog.asksaveasfilename(title="Select a save location for front.nc",
                                                              defaultextension=".nc",
                                                              filetypes=[("NC Files", "*.nc")])
                 cmd.append(f"--front '{sciezki['sciezka_Górna warstwa']}'")
                 cmd.append(f"--front-output '{front_output}'")
 
             if "sciezka_Dolna warstwa" in sciezki:
-                back_output = filedialog.asksaveasfilename(title="Wybierz miejsce zapisu dla back.nc",
+                back_output = filedialog.asksaveasfilename(title="Select a save location for back.nc",
                                                             defaultextension=".nc",
                                                             filetypes=[("NC Files", "*.nc")])
                 cmd.append(f"--back '{sciezki['sciezka_Dolna warstwa']}'")
                 cmd.append(f"--back-output '{back_output}'")
 
             if "sciezka_outline" in sciezki:
-                outline_output = filedialog.asksaveasfilename(title="Wybierz miejsce zapisu dla outline.nc",
+                outline_output = filedialog.asksaveasfilename(title="Select a save location for outline.nc",
                                                                defaultextension=".nc",
                                                                filetypes=[("NC Files", "*.nc")])
                 cmd.append(f"--outline '{sciezki['sciezka_outline']}'")
                 cmd.append(f"--outline-output '{outline_output}'")
 
             if "sciezka_vias" in sciezki:
-                vias_output = filedialog.asksaveasfilename(title="Wybierz miejsce zapisu dla vias.nc",
+                vias_output = filedialog.asksaveasfilename(title="Select a save location for vias.nc",
                                                             defaultextension=".nc",
                                                             filetypes=[("NC Files", "*.nc")])
                 vias.append(f"--drill '{sciezki['sciezka_vias']}'")
@@ -4259,11 +4311,11 @@ while True:
                     vias.append(f"--front '{sciezki['sciezka_Górna warstwa']}'")
                     vias.append(f"--front-output tymfzasowyplikokreslajacywymiaryoniemozliwejnazwie.nc")
                 else:
-                    print("nie wybrano pliku który pozwala oszacować wymiarów płytki, wygenerowany plik gcode najprawdopodobniej będzie missaligned!!")
+                    print("No file was selected to estimate the board dimensions; the generated G-code file will most likely be misaligned!!")
 
 
             if "sciezka_through holes" in sciezki:
-                throughholes_output = filedialog.asksaveasfilename(title="Wybierz miejsce zapisu dla through_holes.nc",
+                throughholes_output = filedialog.asksaveasfilename(title="Select a save location for through_holes.nc",
                                                                    defaultextension=".nc",
                                                                    filetypes=[("NC Files", "*.nc")])
                 cmd.append(f"--drill '{sciezki['sciezka_through holes']}'")
@@ -4294,13 +4346,13 @@ while True:
 
             for file in new_svgs:
                 os.remove(file)
-                print(f"Usunięto: {file}")
+                print(f"Deleted: {file}")
 
-            input("\nNaciśnij Enter, aby kontynuować...")
+            input("\nPress Enter to continue...")
             cls()
-            input("Program wykona teraz zdjęcie by określić punkt zerowy płytki.\nUpewnij się że maszyna oraz kamera są włączone, podłączone oraz gotowe do pracy.\nNaciśnij enter, aby kontynuować")
-            print("\nWykonwyanie zdjęcia...")
-            print("Czy chcesz ustawić maszyne na odpowiednią pozycje? (t/n): ")
+            input("The program will now take a picture to determine the board's zero point.\nEnsure that the machine and camera are powered on, connected, and ready for operation.\nPress Enter to continue.")
+            print("\nTaking a photo...")
+            print("Do you want to move the machine to the correct position? (t/n): ")
             wybor = str(readchar.readchar())
             if wybor == str("t"):
                 stream_gcode_list(ser, home)
@@ -4308,23 +4360,23 @@ while True:
             capture = capture_write_unified()
             zdj = cv2.imread("image.jpeg", cv2.IMREAD_COLOR)
             if zdj is None:
-                raise FileNotFoundError("Nie udało się wczytać image.jpeg")
+                raise FileNotFoundError("Failed to load image.jpeg")
 
             h, w = zdj.shape[:2]
-            cv2.namedWindow("capture", cv2.WINDOW_NORMAL)         # okno możesz zmieniać
-            cv2.resizeWindow("capture", w, h)                     # ustaw okno na pełne wymiary obrazu
-            cv2.imshow("capture", zdj)
-            cv2.waitKey(0)                                        # poczekaj na naciśnięcie klawisza
-            cv2.destroyAllWindows()
-            input("teraz program wykona detekcje punktu 0")
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.imshow(cv2.cvtColor(zdj, cv2.COLOR_BGR2RGB))
+            ax.set_title("Preview — close the window to continue")
+            ax.axis('off')
+            plt.show()
+            input("now the program will detect 0 point")
             max_w, max_h = 0.0, 0.0
             for path in gcode_paths:
                 w, h = parse_dimensions(path)
-                print(f"Plik {os.path.basename(path)}: szer. {w:.3f} mm, wys. {h:.3f} mm")
+                print(f"File {os.path.basename(path)}: width {w:.3f} mm, height {h:.3f} mm")
                 if w > max_w: max_w = w
                 if h > max_h: max_h = h
-            print(f"\n➡️ Największa szerokość spośród wybranych: {max_w:.3f} mm")
-            print(f"➡️ Największa wysokość spośród wybranych: {max_h:.3f} mm")
+            print(f"\n➡️ Biggest width among the selected ones: {max_w:.3f} mm")
+            print(f"➡️ Biggest height among the selected ones: {max_h:.3f} mm")
             X0, Y0 = detect_copper_origin(zdj, max_w, max_h)
             Xpnp = X0
             Ypnp = Y0-max_h
@@ -4349,9 +4401,9 @@ while True:
                 else:
                     h_points=2
                     delta_h=max_h
-                input(f"\nGrid o wielkości {w_points}x{h_points} z punktami oddalonymi od siebie o {delta_w} i {delta_h}\nmaszyna przejedzie teraz do rogu płytki. Naciśnij enter by wykonać")
+                input(f"\nGrid the size of {w_points}x{h_points} with points spaced apart by {delta_w} and {delta_h}\nThe machine will now move to the corner of the plate. Press Enter to execute.")
                 stream_gcode_list(ser, ["G90 G0 X0 Y0"])
-                input("maszyna określi teraz wysokość zerową. Przymocuj do laminatu i frezu przewodniki i naciśnij enter")
+                input("The machine will now determine the zero height. Attach the probes to the laminate and the milling bit, then press Enter.")
                 Z_RR=determine_z_zero(ser, 60, 1, 10)
                 auto_level(ser, w_points, h_points, delta_w, delta_h, zlevelmax, zlevelmin, levelfeed, Z_RR)
                 gcode_files = [front_output, back_output, outline_output, vias_output, throughholes_output]
@@ -4375,15 +4427,15 @@ while True:
                         base, ext = os.path.splitext(orig_path)
                         leveled_path = f"{base}_leveled{ext}"
                         if os.path.exists(leveled_path):
-                            input(f"\nTeraz zostanie wysłany plik {label}.\nZałóż odpowiedni frez i naciśnij Enter, aby kontynuować…")
+                            input(f"\nFile {label} will now be sent.\nInstall the appropriate mill and press Enter to continue…")
                             send_message("DREMEL_ON")
                             stream_gcode_file_pipelined(ser, leveled_path)
                             send_message("DREMEL_OFF")
                         else:
-                            print(f"⚠️ Nie znaleziono pliku {os.path.basename(leveled_path)}, pomijam.")
+                            print(f"⚠️ Couldn't find the {os.path.basename(leveled_path)} file, skipping.")
                     
-                    input("\n➡️ Wszystkie pliki wysłane.")
-                    print("Czy chcesz wykonać operacje PnP na wykonanej płytce? (t/n)")
+                    input("\n➡️ All files send.")
+                    print("Do you want to perform Pick-and-Place operations on the created PCB? (t/n)")
                     wybor = str(readchar.readchar())
                     if wybor.lower() != "t":
                         # użytkownik nie chce PnP -> wychodzimy
@@ -4393,15 +4445,15 @@ while True:
                         try:
                             Xpnp, Ypnp
                         except NameError:
-                            raise RuntimeError("Brak zdefiniowanych zmiennych xa/ya — najpierw wykonaj detekcję punktu 0 przed frezowaniem.")
+                            raise RuntimeError("Undefined xa/ya variables — perform zero-point detection before milling.")
                         
                         X0 = Xpnp
                         Y0 = Ypnp
                         
                         # 2) Wczytaj plik PnP
-                        sciezka_pnp = filedialog.askopenfilename(title="Wybierz plik PnP")
+                        sciezka_pnp = filedialog.askopenfilename(title="Choose a PnP file")
                         if not sciezka_pnp:
-                            print("Nie wybrano pliku PnP.")
+                            print("No PnP file selected..")
                         else:
                             placements = parse_pick_and_place_auto(sciezka_pnp)
                             print(f"rows: {len(placements)}")
@@ -4413,15 +4465,15 @@ while True:
                             for r in placements[:8]:
                                 print(" ", r)
 
-                            print("Czy wszystko się zgadza? (t/n)")
+                            print("Is everything correct? (t/n)")
                             wybor = str(readchar.readchar())
                             if wybor.lower() != "t":
-                                print("Anulowano PnP przez użytkownika.")
+                                print("PnP operation cancelled by the user.")
                             else:
-                                input("Proszę rozłożyć odpowiednie elementy SMD na blacie roboczym. Naciśnij Enter aby kontynuować...")
+                                input("Please lay out the appropriate SMD components on the work surface. Press Enter to continue...")
 
 
-                                print("Należy wykonać zdjęcie.")
+                                print("A photo must be taken.")
                                 send_message("HOME")
                                 z = get_z_from_status(ser)
                                 pnp_z_zero = z + 3
@@ -4434,15 +4486,15 @@ while True:
                                 capture_write_unified(filename="img_top.jpeg", camera='top')
                                 img_top = cv2.imread("img_top.jpeg", cv2.IMREAD_COLOR)
                                 if img_top is None:
-                                    raise RuntimeError("Nie udało się wczytać img_top.jpeg")
+                                    raise RuntimeError("Failed to load img_top.jpeg")
                                 
                                 # wybierz ROI (jeśli chcesz skupić się na obszarze z taśmą)
-                                print("Wybierz ROI (obszar z częściami) — zamknij oknem lub anuluj, jeśli chcesz użyć całego obrazu.")
+                                print("Select the ROI (area containing the parts)—close the selection window or cancel if you want to use the entire image.")
                                 roi = select_roi_interactive(img_top)   # zwraca (x,y,w,h) lub None
                                 
                                 cnts = debug_workbench_roi_pipeline(img_top, roi, canny=(20,80), morph_kernel=(3,3), min_area_px_try=10)
 
-                                input("Program wykona teraz detekcję elementów SMD. Naciśnij Enter aby kontynuować...")
+                                input("The program will now detect SMD components. Press Enter to continue...")
                                 # 1) wykryj elementy na blacie (raw)
                                 dets_raw = detect_parts_on_workbench(img_top, roi=roi, min_area_px=20, morph_kernel_close=(5,5), debug_dir="debug_pnp", save_debug=True)
 
@@ -4455,7 +4507,7 @@ while True:
                                 dets_norm = normalize_detected_parts(dets_with_rect, merge_dist_px=0, min_area_px=100)
                                 print("After normalize -> count:", len(dets_norm))
                                 if not dets_norm:
-                                    raise RuntimeError("Nie wykryto części po normalizacji. Sprawdź ROI/parametry/detekcję.")
+                                    raise RuntimeError("Part not detected after normalization. Check ROI/parameters/detection.")
                                 # 4) interaktywnie obejrzyj i zaakceptuj/zbadaj wykrycia
                                 #    display_detected_parts_interactive obsługuje sterowanie (f, p, v, q/Enter)
                                 dets_norm = display_detected_parts_interactive(img_top, dets_norm)
@@ -4474,10 +4526,10 @@ while True:
 
 
                 else:
-                    print("Brak plików G‑code do post‑procesu.")
+                    print("No G-code files for post-processing.")
                     input("a")
             else:
-                print("Brak wybranych plików do analizy wymiarów.")
+                print("No files selected for dimensional analysis.")
                 input("a")
         
     elif wybor == 2:
@@ -4492,7 +4544,7 @@ while True:
             }
             for num, key in options.items():
                 print(f"{num}. {key.replace('_', ' ').capitalize()}: {config[key]}")
-            print("21. Powrót do menu głównego")
+            print("21. Return to the main menu")
             wybor_ustawienia = int(input())
             if wybor_ustawienia == 21:
                 millproject_content = save_millproject(config)
@@ -4501,79 +4553,82 @@ while True:
                 break
             elif wybor_ustawienia in options:
                 key = options[wybor_ustawienia]
-                config[key] = float(input(f"Podaj nową wartość dla {key.replace('_', ' ')}: "))
+                config[key] = float(input(f"Enter a new value for {key.replace('_', ' ')}: "))
                 save_config(config)
     elif wybor == 3:
         if polaczenie < 3:
-            print("Nie wybrano połączenia z maszyną lub jedną z kamer!")
-            input("Prosze nacisnac enter i w menu dokonać połączenia z obydwoma (teraz resetuje się licznik)")
+            print("No connection to the machine or one of the cameras has been selected!")
+            input("Please press Enter and connect to both via the menu (the counter is now resetting).")
             polaczenie = 0
         else:
             while True:
                 cls()
-                print("1. Kamera górna\n2. Kamera w blacie\n3. Wyjście")
+                print("1. Upper camera\n2. Bed camera\n3. Exit")
                 wybor = int(readchar.readchar())
                 if wybor == 1:
                     cls()
                     while True:
-                        print("1. Kalibracja kolorów\n2. kalibracja rogów\n3. Test kolorów\n4. Orientacja kamery\n5. Wyjście")
+                        print("1. Color calibration\n2. Corners calibration\n3. Color test\n4. Camera rotation\n5. Exit")
                         wybor = int(readchar.readchar())
                         if wybor == 1:
                             cls()
-                            print("Czy chcesz ustawić maszyne na odpowiednią pozycje? (t/n): ")
+                            print("Do you want to move the machine to the correct position? (t/n): ")
                             wybor = str(readchar.readchar())
                             if wybor == str("t"):
                                 stream_gcode_list(ser, home)
                                 stream_gcode_list(ser, gcode_zdj)
-                            input("Uwaga, program za chwile wykona zdjęcie. Naciśnij enter gdy gotowy")
+                            input("Warning, the program is about to take a photo. Press Enter when ready.")
                             capture_write_unified()  # zapisz obraz jako 'image.jpeg'
                             zdj = cv2.imread('image.jpeg', cv2.IMREAD_COLOR)
                             if zdj is None:
-                                raise FileNotFoundError("Nie udało się wczytać image.jpeg")
+                                raise FileNotFoundError("Failed to laod image.jpeg")
                             manual_color_calibration(zdj)
                         
                         elif wybor == 2:
                             cls()
-                            print("Czy chcesz ustawić maszyne na odpowiednią pozycje? (t/n): ")
+                            print("Do you want to move the machine to the correct position? (t/n):  (t/n): ")
                             wybor = str(readchar.readchar())
                             if wybor == str("t"):
                                 stream_gcode_list(ser, home)
                                 stream_gcode_list(ser, gcode_zdj)
-                            input("Uwaga, program za chwile wykona zdjęcie. Naciśnij enter gdy gotowy")
+                            input("Warning, the program is about to take a photo. Press Enter when ready.")
                             capture_write_unified()  # zapisz obraz jako 'image.jpeg'
                             zdj = cv2.imread('image.jpeg', cv2.IMREAD_COLOR)
                             if zdj is None:
-                                raise FileNotFoundError("Nie udało się wczytać image.jpeg")
+                                raise FileNotFoundError("Failed to load image.jpeg")
                             manual_calibration(zdj)
                         elif wybor == 3:
                             cls()
-                            print("Czy chcesz ustawić maszyne na odpowiednią pozycje? (t/n): ")
-                            wybor = str(readchar.readchar())
-                            if wybor == str("t"):
-                                stream_gcode_list(ser, home)
-                                stream_gcode_list(ser, gcode_zdj)
-                            input("Uwaga, program za chwile wykona zdjęcie. Naciśnij enter gdy gotowy")
-                            capture = capture_write_unified()
-                            zdj = cv2.imread("image.jpeg", cv2.IMREAD_COLOR)
-                            if zdj is None:
-                                raise FileNotFoundError("Nie udało się wczytać image.jpeg")
+                            if not os.path.isfile(CALIBRATION_FILE):
+                                input("No saved homography — perform homography calibration (top camera calibration option) first before running the color test. Press Enter to return to the menu...")
+                            else:
+                                print("Do you want to move the machine to the correct position? (t/n): ")
+                                wybor = str(readchar.readchar())
+                                if wybor == str("t"):
+                                    stream_gcode_list(ser, home)
+                                    stream_gcode_list(ser, gcode_zdj)
+                                input("Warning, the program is about to take a photo. Press Enter when ready.")
+                                capture = capture_write_unified()
+                                zdj = cv2.imread("image.jpeg", cv2.IMREAD_COLOR)
+                                if zdj is None:
+                                    raise FileNotFoundError("Failed to load image.jpeg")
 
-                            h, w = zdj.shape[:2]
-                            cv2.namedWindow("capture", cv2.WINDOW_NORMAL)         # okno możesz zmieniać
-                            cv2.resizeWindow("capture", w, h)                     # ustaw okno na pełne wymiary obrazu
-                            cv2.imshow("capture", zdj)
-                            cv2.waitKey(0)                                        # poczekaj na naciśnięcie klawisza
-                            cv2.destroyAllWindows()
-                            #detect_copper_corner(zdj)
-                            xa, ya = detect_copper_origin(zdj, 5, 5)
-                            print(xa)
-                            print(ya)
-                            input("A")
+                                h, w = zdj.shape[:2]
+                                fig, ax = plt.subplots(figsize=(8, 6))
+                                ax.imshow(cv2.cvtColor(zdj, cv2.COLOR_BGR2RGB))
+                                ax.set_title("Preview — close the windows to contiune")
+                                ax.axis('off')
+                                plt.show()
+                                #detect_copper_corner(zdj)
+                                xa, ya = detect_copper_origin(zdj, 5, 5)
+                                print(xa)
+                                print(ya)
+                                input("A")
                             cls()
                         elif wybor == 4:
                             cls()
                             while True:
-                                print("1. Podaj orientacje kamery \n2. Określ orientacje kamery \n3. Wyjście")
+                                print("1. Enter camera rotation \n2. Determine camera rotation \n3. Exit")
                                 wybor = int(readchar.readchar())
                                 if wybor == 1:
                                     cfg = configparser.ConfigParser()
@@ -4581,49 +4636,49 @@ while True:
                                     if "Connection" not in cfg:
                                         cfg["Connection"] = {}
                                     cur = cfg["Connection"].get("camera_rotation_deg", "0")
-                                    print(f"Aktualna rotacja kamery: {cur} stopni.")
-                                    val = input("Podaj rotację kamery (0, 90, 180, 270) lub Enter aby zostawić: ").strip()
+                                    print(f"Current camera rotation: {cur} degrees.")
+                                    val = input("Enter camera rotation (0, 90, 180, 270) or press Enter to retain the current value: ").strip()
                                     if not val:
-                                        print("Nie zmieniono.")
+                                        print("The value was not changed")
                                     try:
                                         v = int(val) % 360
                                         if v not in (0,90,180,270):
-                                            print("Zalecane wartości: 0,90,180,270. Zaokrąglam do najbliższej z nich.")
+                                            print("Recommended values: 0, 90, 180, 270. Rounding to the nearest one.")
                                             # znajdź najbliższą z [0,90,180,270]
                                             cand = min((0,90,180,270), key=lambda x: abs(x - v))
                                             v = cand
                                         cfg["Connection"]["camera_rotation_deg"] = str(v)
                                         with open(CONFIG_FILE, "w") as f:
                                             cfg.write(f)
-                                        print(f"Zapisano camera_rotation_deg = {v} w {CONFIG_FILE} (sekcja [Connection]).")
+                                        print(f"Saved camera_rotation_deg = {v} w {CONFIG_FILE} (section [Connection]).")
                                     except Exception as e:
-                                        print("Błąd:", e)
+                                        print("Error:", e)
                                 elif wybor == 2:
-                                    print("Czy chcesz ustawić maszyne na odpowiednią pozycje? (t/n): ")
+                                    print("Do you want to move the machine to the correct position? (t/n): ")
                                     wybor = str(readchar.readchar())
                                     if wybor == str("t"):
                                         stream_gcode_list(ser, home)
                                         stream_gcode_list(ser, gcode_zdj)
                                     capture = capture_write_unified()
+                                    # Kamera 'top' to źródło sieciowe (camera_ip) — jego backend (FFMPEG/GStreamer)
+                                    # potrafi zostawić wątki dekodujące jeszcze chwilę po cap.release(), co koliduje
+                                    # z pętlą zdarzeń okien OpenCV i powoduje, że waitKey wraca natychmiast.
+                                    # Krótka pauza daje im czas się w pełni zamknąć przed otwarciem okien podglądu.
+                                    time.sleep(0.5)
                                     zdj = cv2.imread("image.jpeg", cv2.IMREAD_COLOR)
                                     if zdj is None:
-                                        raise FileNotFoundError("Nie udało się wczytać image.jpeg")
+                                        raise FileNotFoundError("Failed to load image.jpeg")
                                     variants = [(0, zdj),
                                                 (90, rotate_image(zdj, 90)),
                                                 (180, rotate_image(zdj, 180)),
                                                 (270, rotate_image(zdj, 270))]
                                     # pokazuj kolejno i daj wybór przez klawisz
-                                    print("Pokażę 4 warianty (0,90,180,270). Zamknij okno aby przejść dalej i wpisz wybór.")
-                                    for deg, v in variants:
-                                        win = f"rot {deg}"
-                                        cv2.imshow(win, v)
-                                        cv2.waitKey(0)
-                                        cv2.destroyAllWindows()
-                                    choice = input("Wpisz wybraną rotację (0/90/180/270): ").strip()
+                                    print("4 variants will be showned (0, 90, 180, 270) in a single window.")
+                                    choice = _show_rotation_grid_and_choose(variants)
                                     try:
                                         choice = int(choice) % 360
                                         if choice not in (0,90,180,270):
-                                            print("Wybrana nieprawidłowa, ustawiam 0.")
+                                            print("Incorrect one chosen, setting to 0.")
                                             choice = 0
                                     except:
                                         choice = 0
@@ -4634,11 +4689,11 @@ while True:
                 elif wybor == 2:
                     cls()
                     while True:    
-                        print("1. Orientacja kamery\n2. Kalibracja px->mm\n3. Kalibracja offsetu głowic PnP\n4. Wyjście")
+                        print("1. Camera rotation\n2. px->mm calibration \n3. PnP head offset calibration \n4. Exit")
                         wybor = int(readchar.readchar())
                         if wybor == 1:
                             cls()
-                            print("Czy chcesz ustawić maszyne na odpowiednią pozycje? (t/n): ")
+                            print("Do you want to move the machine to the correct position? (t/n): ")
                             wybor = str(readchar.readchar())
                             if wybor == str("t"):
                                 stream_gcode_list(ser, home)
@@ -4646,23 +4701,18 @@ while True:
                             capture = capture_write_unified(camera='up')
                             zdj = cv2.imread("image.jpeg", cv2.IMREAD_COLOR)
                             if zdj is None:
-                                raise FileNotFoundError("Nie udało się wczytać image.jpeg")
+                                raise FileNotFoundError("Failed to load image.jpeg")
                             variants = [(0, zdj),
                                         (90, rotate_image(zdj, 90)),
                                         (180, rotate_image(zdj, 180)),
                                         (270, rotate_image(zdj, 270))]
                             # pokazuj kolejno i daj wybór przez klawisz
-                            print("Pokażę 4 warianty (0,90,180,270). Zamknij okno aby przejść dalej i wpisz wybór.")
-                            for deg, v in variants:
-                                win = f"rot {deg}"
-                                cv2.imshow(win, v)
-                                cv2.waitKey(0)
-                                cv2.destroyAllWindows()
-                            choice = input("Wpisz wybraną rotację (0/90/180/270): ").strip()
+                            print("4 variants will be showned (0, 90, 180, 270) in a single window.")
+                            choice = _show_rotation_grid_and_choose(variants)
                             try:
                                 choice = int(choice) % 360
                                 if choice not in (0,90,180,270):
-                                    print("Wybrana nieprawidłowa, ustawiam 0.")
+                                    print("Incorrect one chosen, setting to 0.")
                                     choice = 0
                             except:
                                 choice = 0
@@ -4675,12 +4725,12 @@ while True:
                                 cfg["Connection"]["camera_up_rotation_deg"] = str(choice)
                                 with open(CONFIG_FILE, "w") as f:
                                     cfg.write(f)
-                                print(f"Zapisano camera_rotation_deg = {choice} w {CONFIG_FILE} (sekcja [Connection]).")
+                                print(f"Saved camera_rotation_deg = {choice} w {CONFIG_FILE} (section [Connection]).")
                             except Exception as e:
-                                print("Błąd:", e)                           
+                                print("Error:", e)
                         elif wybor == 2:
                             cls()
-                            print("Czy chcesz ustawić maszyne na odpowiednią pozycje? (t/n): ")
+                            print("Do you want to move the machine to the correct position? (t/n): ")
                             wybor = str(readchar.readchar())
                             if wybor == str("t"):
                                 stream_gcode_list(ser, home)
@@ -4689,7 +4739,7 @@ while True:
                             calibrate_up_via_tool(ser)
                         elif wybor == 3:
                             cls()
-                            print("Czy chcesz ustawić maszynę na odpowiednią pozycje? (t/n): ")
+                            print("Do you want to move the machine to the correct position? (t/n): ")
                             wybor = str(readchar.readchar())
                             if wybor == str("t"):
                                 stream_gcode_list(ser, home)
@@ -4700,13 +4750,13 @@ while True:
                                 stream_gcode_list(ser, gcode_zdj_up)
                             else:
                                 stream_gcode_list(ser, unlock)
-                            input("naciśnij enter aby kontynuować")
+                            input("press Enter to continue")
                             ok = pnpp_calibrate_tool_offset(ser, tol_mm=0.01, max_iter=12, show_debug=True)
                             if ok:
-                                input("Kalibracja PnP zakończona. Naciśnij Enter aby kontynuować...")
+                                input("PnP calibration complete. Press Enter to continue...")
                                 cls()
                             else:
-                                input("Kalibracja PnP przerwana lub nieudanaw. Naciśnij Enter aby kontynuować...")
+                                input("PnP calibration interrupted or failed. Press Enter to continue...")
                                 cls()
                         elif wybor == 4:
                             break
@@ -4715,330 +4765,41 @@ while True:
     elif wybor == 4:
         cls()
         while True:
-            print("1. Połączenie z maszyną\n2. Połączenie z kamerą\n3. Wyjście")
+            print("1. Connection to the machine\n2. Connection to the cameras\n3. Exit")
             wybor_pol = int(readchar.readchar())
             if wybor_pol == 1:
                 cls()
                 port = choose_serial_port()
                 ser = serial.Serial(port, BAUD_RATE)
                 send_wake_up(ser)
-                print("Wybrano port:", port)
+                print("Selected port:", port)
                 polaczenie += 1
-                save_connections(port, saved_ip, saved_up_ip)    # zapisz nowy port
+                saved_port = port    # zaktualizuj zmienną w pamięci, inaczej kolejny zapis nadpisze ją starą wartością
+                save_connections(saved_port, saved_ip, saved_up_ip)    # zapisz nowy port
                 time.sleep(3)
             elif wybor_pol == 2:
                 cls()
-                while True:
-                    print("1. Kamera górna\n 2. Kamera w blacie\n3. Wyjście")
+                whilFe True:
+                    print("1. Upper camera\n 2. Bed camera\n3. Exit")
                     wybor = int(readchar.readchar())
                     if wybor == 1:
-                        ip = input("Podaj adres IP kamery (włącznie z portem): ")
+                        ip = input("Enter the camera's IP address (including the port): ")
                         cls()
                         polaczenie += 1
-                        save_connections(saved_port, ip, saved_up_ip)    # zapisz nowe IP
+                        saved_ip = ip    # zaktualizuj zmienną w pamięci
+                        save_connections(saved_port, saved_ip, saved_up_ip)    # zapisz nowe IP
                     elif wybor == 2:
-                        ip_up = input("Podaj adres IP kamery (włącznie z portem): ")
+                        ip_up = input("Enter the camera's IP address (including the port): ")
                         cls()
                         polaczenie += 1
-                        save_connections(saved_port, saved_ip, ip_up)    # zapisz nowe IP
+                        saved_up_ip = ip_up    # zaktualizuj zmienną w pamięci
+                        save_connections(saved_port, saved_ip, saved_up_ip)    # zapisz nowe IP
                     elif wybor == 3:
                         break
             elif wybor_pol == 3:
                 break
             else:
-                input("podano błędne dane")
+                input("Incorrect data was provided.")
     elif wybor == 5:
         break
-    
-    elif wybor == 8:
-        Xpnp = 90
-        Ypnp = 50
-        print("Czy chcesz wykonać operacje PnP na wykonanej płytce? (t/n)")
-        wybor = str(readchar.readchar())
-        if wybor.lower() != "t":
-            # użytkownik nie chce PnP -> wychodzimy
-            break
-        else:
-            # 1) Upewnij się, że X0,Y0 są w pamięci (wyznaczone przy frezowaniu)
-            try:
-                Xpnp, Ypnp
-            except NameError:
-                raise RuntimeError("Brak zdefiniowanych zmiennych xa/ya — najpierw wykonaj detekcję punktu 0 przed frezowaniem.")
-            
-            X0 = Xpnp
-            Y0 = Ypnp
-            
-            # 2) Wczytaj plik PnP
-            sciezka_pnp = filedialog.askopenfilename(title="Wybierz plik PnP")
-            if not sciezka_pnp:
-                print("Nie wybrano pliku PnP.")
-            else:
-                placements = parse_pick_and_place_auto(sciezka_pnp)
-                print(f"rows: {len(placements)}")
-                xs = [r['x'] for r in placements if r.get('x') is not None]
-                ys = [r['y'] for r in placements if r.get('y') is not None]
-                if xs and ys:
-                    print(f"span_x = {max(xs)-min(xs):.3f} mm, span_y = {max(ys)-min(ys):.3f} mm")
-                print("first 8 rows:")
-                for r in placements[:8]:
-                    print(" ", r)
-
-                print("Czy wszystko się zgadza? (t/n)")
-                wybor = str(readchar.readchar())
-                if wybor.lower() != "t":
-                    print("Anulowano PnP przez użytkownika.")
-                else:
-                    input("Proszę rozłożyć odpowiednie elementy SMD na blacie roboczym. Naciśnij Enter aby kontynuować...")
-
-
-                    print("Należy wykonać zdjęcie.")
-                    stream_gcode_list(ser, unlock)
-                    stream_gcode_list(ser, home)
-                    stream_gcode_list(ser, gcode_zdj)   # gcode_zdj powinien ustawiać maszynę nad miejscem robienia zdjęcia 'top'
-
-                    # 3) capture top camera
-                    capture_write_unified(filename="img_top.jpeg", camera='top')
-                    img_top = cv2.imread("img_top.jpeg", cv2.IMREAD_COLOR)
-                    if img_top is None:
-                        raise RuntimeError("Nie udało się wczytać img_top.jpeg")
-                    
-                    # wybierz ROI (jeśli chcesz skupić się na obszarze z taśmą)
-                    print("Wybierz ROI (obszar z częściami) — zamknij oknem lub anuluj, jeśli chcesz użyć całego obrazu.")
-                    roi = select_roi_interactive(img_top)   # zwraca (x,y,w,h) lub None
-                    
-                    cnts = debug_workbench_roi_pipeline(img_top, roi, canny=(20,80), morph_kernel=(3,3), min_area_px_try=10)
-
-                    input("Program wykona teraz detekcję elementów SMD. Naciśnij Enter aby kontynuować...")
-                    # 1) wykryj elementy na blacie (raw)
-                    dets_raw = detect_parts_on_workbench(img_top, roi=roi, min_area_px=20, morph_kernel_close=(5,5), debug_dir="debug_pnp", save_debug=True)
-
-                    # 2) (opcjonalnie) pokaż surowe debugowanie jeśli chcesz
-                    print("Raw detections:", len(dets_raw))
-                    debug_detected_parts(dets_raw, n=8)
-
-                    # 3) normalizuj / odfiltruj i scal drobne artefakty
-                    dets_with_rect = ensure_rect_on_detections(dets_raw)
-                    dets_norm = normalize_detected_parts(dets_with_rect, merge_dist_px=0, min_area_px=100)
-                    print("After normalize -> count:", len(dets_norm))
-                    if not dets_norm:
-                        raise RuntimeError("Nie wykryto części po normalizacji. Sprawdź ROI/parametry/detekcję.")
-                    # 4) interaktywnie obejrzyj i zaakceptuj/zbadaj wykrycia
-                    #    display_detected_parts_interactive obsługuje sterowanie (f, p, v, q/Enter)
-                    dets_norm = display_detected_parts_interactive(img_top, dets_norm)
-
-                    # 5) po akceptacji wywołaj istniejący UI do przypisania wykryć do pozycji z PnP
-                    detected_centroid_pixels = show_parts_and_ask_label(placements, dets_norm, img=img_top)
-
-                    # 6) przelicz piksele -> współrzędne maszyny (mm)
-                    # jeśli masz gotową funkcję parts_pixels_to_machine -> użyj jej; inaczej użyj homografii (przykładowa funkcja poniżej)
-                    pick_coords = parts_pixels_to_machine(detected_centroid_pixels, camera='top')
-                   # 7) Wyświetl innformacje i wypisz plan (suchy run)
-                    print("Plan PnP - pick coords (machine mm):")
-                    for p in pick_coords:
-                        print(p.get('ref'), "->", p.get('machine_x'), p.get('machine_y'))
-                    stream_gcode_list(ser, [f"G01 X90 Y50 F1500"])
-                    determine_z_zero(ser, 60, 1, 10)
-                    stream_gcode_list(ser, [f"G91 G01 Z10 F100"])
-                    send_message("HOME")
-                    z = get_z_from_status(ser)
-                    pnp_z_zero = z + 3
-                    camera_distance = 10-pnp_z_zero
-                    stream_gcode_list(ser, home_z)
-                    pnp_session_loop(pick_coords=pick_coords, placements=placements, ser=ser, camera_x=pnp_cam_x, camera_y=pnp_cam_y, pnp_z_zero=pnp_z_zero, camera_distance=camera_distance)
-    #TEMP DO DEBUGOWANIA
-    #USUŃ TO!!!!!
-    elif wybor == 9:
-        img_top = cv2.imread("pnp_up.jpg", cv2.IMREAD_COLOR)
-        detect_component_orientation_up(img_top, debug_show=False)
-        input("A")
-    elif wybor == 6:
-        stream_gcode_list(ser, unlock)
-        stream_gcode_list(ser, [f"G92 Z10"])
-        cls()
-        Xpnp = 80
-        Ypnp = 80
-        print("Czy chcesz wykonać operacje PnP na wykonanej płytce? (t/n)")
-        wybor = str(readchar.readchar())
-        if wybor.lower() != "t":
-            # użytkownik nie chce PnP -> wychodzimy
-            break
-        else:
-            # 1) Upewnij się, że X0,Y0 są w pamięci (wyznaczone przy frezowaniu)
-            try:
-                Xpnp, Ypnp
-            except NameError:
-                raise RuntimeError("Brak zdefiniowanych zmiennych xa/ya — najpierw wykonaj detekcję punktu 0 przed frezowaniem.")
-            
-            X0 = Xpnp
-            Y0 = Ypnp
-            
-            # 2) Wczytaj plik PnP
-            sciezka_pnp = filedialog.askopenfilename(title="Wybierz plik PnP")
-            if not sciezka_pnp:
-                print("Nie wybrano pliku PnP.")
-            else:
-                placements = parse_pick_and_place_auto(sciezka_pnp)
-                print(f"rows: {len(placements)}")
-                xs = [r['x'] for r in placements if r.get('x') is not None]
-                ys = [r['y'] for r in placements if r.get('y') is not None]
-                if xs and ys:
-                    print(f"span_x = {max(xs)-min(xs):.3f} mm, span_y = {max(ys)-min(ys):.3f} mm")
-                print("first 8 rows:")
-                for r in placements[:8]:
-                    print(" ", r)
-
-                print("Czy wszystko się zgadza? (t/n)")
-                wybor = str(readchar.readchar())
-                if wybor.lower() != "t":
-                    print("Anulowano PnP przez użytkownika.")
-                else:
-                    input("Proszę rozłożyć odpowiednie elementy SMD na blacie roboczym. Naciśnij Enter aby kontynuować...")
-
-
-                    print("Należy wykonać zdjęcie.")
-                    send_message("HOME")
-                    z = get_z_from_status(ser)
-                    pnp_z_zero = z + 3
-                    camera_distance = 10-pnp_z_zero
-                    stream_gcode_list(ser, unlock)
-                    stream_gcode_list(ser, home)
-                    stream_gcode_list(ser, gcode_zdj)   # gcode_zdj powinien ustawiać maszynę nad miejscem robienia zdjęcia 'top'
-
-                    # 3) capture top camera
-                    capture_write_unified(filename="img_top.jpeg", camera='top')
-                    img_top = cv2.imread("img_top.jpeg", cv2.IMREAD_COLOR)
-                    if img_top is None:
-                        raise RuntimeError("Nie udało się wczytać img_top.jpeg")
-                    
-                    # wybierz ROI (jeśli chcesz skupić się na obszarze z taśmą)
-                    print("Wybierz ROI (obszar z częściami) — zamknij oknem lub anuluj, jeśli chcesz użyć całego obrazu.")
-                    roi = select_roi_interactive(img_top)   # zwraca (x,y,w,h) lub None
-                    
-                    cnts = debug_workbench_roi_pipeline(img_top, roi, canny=(20,80), morph_kernel=(3,3), min_area_px_try=10)
-
-                    input("Program wykona teraz detekcję elementów SMD. Naciśnij Enter aby kontynuować...")
-                    # 1) wykryj elementy na blacie (raw)
-                    dets_raw = detect_parts_on_workbench(img_top, roi=roi, min_area_px=20, morph_kernel_close=(5,5), debug_dir="debug_pnp", save_debug=True)
-
-                    # 2) (opcjonalnie) pokaż surowe debugowanie jeśli chcesz
-                    print("Raw detections:", len(dets_raw))
-                    debug_detected_parts(dets_raw, n=8)
-
-                    # 3) normalizuj / odfiltruj i scal drobne artefakty
-                    dets_with_rect = ensure_rect_on_detections(dets_raw)
-                    dets_norm = normalize_detected_parts(dets_with_rect, merge_dist_px=0, min_area_px=100)
-                    print("After normalize -> count:", len(dets_norm))
-                    if not dets_norm:
-                        raise RuntimeError("Nie wykryto części po normalizacji. Sprawdź ROI/parametry/detekcję.")
-                    # 4) interaktywnie obejrzyj i zaakceptuj/zbadaj wykrycia
-                    #    display_detected_parts_interactive obsługuje sterowanie (f, p, v, q/Enter)
-                    dets_norm = display_detected_parts_interactive(img_top, dets_norm)
-
-                    # 5) po akceptacji wywołaj istniejący UI do przypisania wykryć do pozycji z PnP
-                    detected_centroid_pixels = show_parts_and_ask_label(placements, dets_norm, img=img_top)
-
-                    # 6) przelicz piksele -> współrzędne maszyny (mm)
-                    # jeśli masz gotową funkcję parts_pixels_to_machine -> użyj jej; inaczej użyj homografii (przykładowa funkcja poniżej)
-                    pick_coords = parts_pixels_to_machine(detected_centroid_pixels, camera='top')
-                   # 7) Wyświetl innformacje i wypisz plan (suchy run)
-                    print("Plan PnP - pick coords (machine mm):")
-                    for p in pick_coords:
-                        print(p.get('ref'), "->", p.get('machine_x'), p.get('machine_y'))
-                    pnp_session_loop(pick_coords=pick_coords, placements=placements, ser=ser, camera_x=pnp_cam_x, camera_y=pnp_cam_y, pnp_z_zero=pnp_z_zero, camera_distance=camera_distance)
-
-    elif wybor == 7:
-        stream_gcode_list(ser, unlock)
-        stream_gcode_list(ser, [f"G92 Z10"])
-        cls()
-        print("Sending: G38.2 Z-1 F10\n:102.085,87.548,-37.993:1]\nSending: G90 G0 Z0.15\n -> ok\nEnd of list\nSending: G90 G0 X8.001000000000001 Y6.325\n -> ok\nEnd of list\nSending: G38.2 Z-1 F10\n -> [PRB:110.085,87.548,-37.975:1]\nSending: G90 G0 Z0.15\n -> ok\nEnd of list\nSending: G90 G0 X0.0 Y12.65\n -> ok\nEnd of list\nSending: G38.2 Z-1 F10\n -> [PRB:102.085,93.873,-38.015:1]\nSending: G90 G0 Z0.15\n -> ok\nEnd of list\nSending: G90 G0 X8.001000000000001 Y12.65\n -> ok\nEnd of list\nSending: G38.2 Z-1 F10\n -> [PRB:110.085,93.873,-37.995:1]\nSending: G90 G0 Z0.15\n -> ok\nEnd of list\nProbe data saved to probe_data.csv\nLeveling /home/koks3606/cnc/test.nc → /home/koks3606/cnc/test_leveled.nc\nGotowe: wszystkie pliki _leveled\n\nTeraz zostanie wysłany plik górnej warstwy.\nZałóż odpowiedni frez i naciśnij Enter, aby kontynuować…\nEnd of file (pipelined)\n\n➡️ Wszystkie pliki wysłane.")
-        Ypnp = 61.021516418
-        Xpnp = 83.684341431
-        print("Czy chcesz wykonać operacje PnP na wykonanej płytce? (t/n)")
-        wybor = str(readchar.readchar())
-        if wybor.lower() != "t":
-            # użytkownik nie chce PnP -> wychodzimy
-            break
-        else:
-            # 1) Upewnij się, że X0,Y0 są w pamięci (wyznaczone przy frezowaniu)
-            try:
-                Xpnp, Ypnp
-            except NameError:
-                raise RuntimeError("Brak zdefiniowanych zmiennych xa/ya — najpierw wykonaj detekcję punktu 0 przed frezowaniem.")
-            
-            X0 = Xpnp
-            Y0 = Ypnp
-            
-            # 2) Wczytaj plik PnP
-            sciezka_pnp = filedialog.askopenfilename(title="Wybierz plik PnP")
-            if not sciezka_pnp:
-                print("Nie wybrano pliku PnP.")
-            else:
-                placements = parse_pick_and_place_auto(sciezka_pnp)
-                print(f"rows: {len(placements)}")
-                xs = [r['x'] for r in placements if r.get('x') is not None]
-                ys = [r['y'] for r in placements if r.get('y') is not None]
-                if xs and ys:
-                    print(f"span_x = {max(xs)-min(xs):.3f} mm, span_y = {max(ys)-min(ys):.3f} mm")
-                print("first 8 rows:")
-                for r in placements[:8]:
-                    print(" ", r)
-
-                print("Czy wszystko się zgadza? (t/n)")
-                wybor = str(readchar.readchar())
-                if wybor.lower() != "t":
-                    print("Anulowano PnP przez użytkownika.")
-                else:
-                    input("Proszę rozłożyć odpowiednie elementy SMD na blacie roboczym. Naciśnij Enter aby kontynuować...")
-
-
-                    print("Należy wykonać zdjęcie.")
-                    send_message("HOME")
-                    z = get_z_from_status(ser)
-                    pnp_z_zero = z + 3
-                    camera_distance = 18-pnp_z_zero
-                    stream_gcode_list(ser, unlock)
-                    stream_gcode_list(ser, home)
-                    stream_gcode_list(ser, gcode_zdj)   # gcode_zdj powinien ustawiać maszynę nad miejscem robienia zdjęcia 'top'
-
-                    # 3) capture top camera
-                    capture_write_unified(filename="img_top.jpeg", camera='top')
-                    img_top = cv2.imread("img_top.jpeg", cv2.IMREAD_COLOR)
-                    if img_top is None:
-                        raise RuntimeError("Nie udało się wczytać img_top.jpeg")
-                    
-                    # wybierz ROI (jeśli chcesz skupić się na obszarze z taśmą)
-                    print("Wybierz ROI (obszar z częściami) — zamknij oknem lub anuluj, jeśli chcesz użyć całego obrazu.")
-                    roi = select_roi_interactive(img_top)   # zwraca (x,y,w,h) lub None
-                    
-                    cnts = debug_workbench_roi_pipeline(img_top, roi, canny=(20,80), morph_kernel=(3,3), min_area_px_try=10)
-
-                    input("Program wykona teraz detekcję elementów SMD. Naciśnij Enter aby kontynuować...")
-                    # 1) wykryj elementy na blacie (raw)
-                    dets_raw = detect_parts_on_workbench(img_top, roi=roi, min_area_px=20, morph_kernel_close=(5,5), debug_dir="debug_pnp", save_debug=True)
-
-                    # 2) (opcjonalnie) pokaż surowe debugowanie jeśli chcesz
-                    print("Raw detections:", len(dets_raw))
-                    debug_detected_parts(dets_raw, n=8)
-
-                    # 3) normalizuj / odfiltruj i scal drobne artefakty
-                    dets_with_rect = ensure_rect_on_detections(dets_raw)
-                    dets_norm = normalize_detected_parts(dets_with_rect, merge_dist_px=0, min_area_px=100)
-                    print("After normalize -> count:", len(dets_norm))
-                    if not dets_norm:
-                        raise RuntimeError("Nie wykryto części po normalizacji. Sprawdź ROI/parametry/detekcję.")
-                    # 4) interaktywnie obejrzyj i zaakceptuj/zbadaj wykrycia
-                    #    display_detected_parts_interactive obsługuje sterowanie (f, p, v, q/Enter)
-                    dets_norm = display_detected_parts_interactive(img_top, dets_norm)
-
-                    # 5) po akceptacji wywołaj istniejący UI do przypisania wykryć do pozycji z PnP
-                    detected_centroid_pixels = show_parts_and_ask_label(placements, dets_norm, img=img_top)
-
-                    # 6) przelicz piksele -> współrzędne maszyny (mm)
-                    # jeśli masz gotową funkcję parts_pixels_to_machine -> użyj jej; inaczej użyj homografii (przykładowa funkcja poniżej)
-                    pick_coords = parts_pixels_to_machine(detected_centroid_pixels, camera='top')
-                   # 7) Wyświetl innformacje i wypisz plan (suchy run)
-                    print("Plan PnP - pick coords (machine mm):")
-                    for p in pick_coords:
-                        print(p.get('ref'), "->", p.get('machine_x'), p.get('machine_y'))
-                    pnp_session_loop(pick_coords=pick_coords, placements=placements, ser=ser, camera_x=pnp_cam_x, camera_y=pnp_cam_y, pnp_z_zero=pnp_z_zero, camera_distance=camera_distance)
 
