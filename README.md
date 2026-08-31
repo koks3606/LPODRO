@@ -4,7 +4,7 @@
 
 **A cheap, highly automated, and compact machine for home production of PCBs and finished electronic circuits.**
 
-[machine](docs/images/1.jpg)
+![machine](docs/images/1.jpg)
 
 LPODRO was designed with makers, hobbyists, amateurs, and small workshops in mind. It replaces chemical processes with precise milling of traces and holes, and its pick-and-place module automatically mounts SMD components onto the finished boards. A vision system automates calibration, inspection, and position correction of components. The project is open-source — anyone can build and modify the machine for rapid prototyping of their own circuits.
 
@@ -77,7 +77,7 @@ LPODRO/
 
 ## Getting started
 
-Everything you need to get started is in the [assembly manual](docs/manuals/assembly%20manual.odt).
+Everything you need to get started is in the [assembly manual](docs/manuals/assembly%20manual.pdf).
 
 ## Machine construction
 
@@ -115,35 +115,21 @@ The project plans to add an integrated heating plate to the machine, placed in t
 
 **Hardware**
 
-- [ ] 
+- [ ] Improve the general experience with SMD components
 
-- Improve the general experience with SMD components
+- [ ] Add automated circuit soldering
 
-- [ ] 
+- [ ] Add a way to make two-layer PCBs
 
-- Add automated circuit soldering
-
-- [ ] 
-
-- Add a way to make two-layer PCBs
-
-- [ ] 
-
-- Try converting an old 3D printer into LPODRO
+- [ ] Try converting an old 3D printer into LPODRO
 
 **Software**
 
-- [ ] 
+- [ ] Add a way to generate stencil files (to either 3d print or mill)
 
-- Add a way to generate stencil files (to either 3d print or mill)
+- [ ] Move everything that runs on an addtional PC to the RPI
 
-- [ ] 
-
-- Move everything that runs on an addtional PC to the RPI
-
-- [ ] 
-
-- Add a GUI to the software
+- [ ] Add a GUI to the software
 
 **Documentation**
 
