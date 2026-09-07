@@ -27,6 +27,7 @@ import threading
 import uuid
 from typing import Dict, Optional, Tuple
 from zeroconf import ServiceBrowser, ServiceListener, Zeroconf
+import trimesh
 
 xa = 0
 ya = 0
@@ -39,6 +40,7 @@ root = tk.Tk()
 root.withdraw()
 
 CONFIG_FILE = "config.ini"
+FOOTPRINT_DB_FILE = "footprint_sizes.json"
 CALIBRATION_FILE = 'homography.npy'
 CALIBRATION_FILE_UP = 'homography_up.npy'
 COLOR_CALIBRATION_FILE = 'color_params.json'
@@ -982,7 +984,8 @@ def load_config():
             "delta": "5",
             "zlevelmax": "0.15",
             "zlevelmin": "-3",
-            "levelfeed": "10"
+            "levelfeed": "10",
+            "holder_pocket_scale": "1.0"
         }
         config["Connection"] = {
             "camera_up_x_mm": "123.2",
@@ -1000,6 +1003,11 @@ def load_config():
             config.write(configfile)
         print("NIE ZNALEZIONO PLIKU KONFIGURACYJNEGO config.ini (został on usunięty lub uszkodzony)! Utworzono nowy z wartościami domyślnymi. PROSZĘ NATYCHMIAST WYKONAĆ WSTĘPNĄ KONFIGURACJĘ POPRZEZ WYBRANIE OPCJI 2 NA NASTĘPNYM EKRANIE!")
         input()
+    # migracja: dopisz nowe ustawienia, jeśli plik config.ini pochodzi ze starszej wersji programu
+    if "holder_pocket_scale" not in config["Settings"]:
+        config["Settings"]["holder_pocket_scale"] = "1.0"
+        with open(CONFIG_FILE, "w") as configfile:
+            config.write(configfile)
     settings = {k: float(v) for k, v in config["Settings"].items()}
     # Parsujemy połączenia (mogą być puste)
     conn = config["Connection"]
@@ -3115,6 +3123,611 @@ def parse_pick_and_place_auto(path):
         return parse_gerber_x3_positions(path)
     # fallback genericparse_pick_and_place
     return parse_pick_and_place(path)
+
+
+# =====================================================================================
+# ==================  GENERATOR PODSTAWKI STL POD ELEMENTY Z BOM  ===================
+# =====================================================================================
+#
+# Funkcja generate_component_holder_stl() tworzy plik STL prostopadłościennej podstawki
+# z wyfrezowanymi (wyciętymi) kieszeniami na komponenty wymienione w pliku BOM/pick&place
+# (wykorzystuje istniejące parsery, np. parse_pick_and_place_auto()) albo w ręcznie podanej
+# liście komponentów. Rozmiar fizyczny obudowy (footprintu) jest brany z bazy w pliku
+# footprint_sizes.json (tworzonej automatycznie z sensownymi wartościami domyślnymi przy
+# pierwszym uruchomieniu — podobnie jak config.ini). Nierozpoznane obudowy są szacowane
+# na podstawie nazwy (np. TQFP44, SOIC8, DIP16...) albo dostają rozmiar domyślny z ostrzeżeniem.
+#
+# Wymaga bibliotek: trimesh + manifold3d (operacje boolowskie CSG).
+#   pip install trimesh manifold3d
+# =====================================================================================
+
+MM_PER_INCH_HOLDER = 25.4  # lokalna stała (nienazywana MM_PER_INCH, żeby nie kolidować z resztą kodu)
+
+def _default_footprint_db() -> dict:
+    """
+    Domyślna baza wymiarów obudów: {"NAZWA": {"w":szerokość_mm, "h":wysokość_mm, "depth":głębokość_kieszeni_mm, "pins":liczba_nóżek}}.
+    Klucze są dopasowywane po znormalizowaniu (wielkie litery, bez separatorów) jako:
+    1) dopasowanie dokładne, 2) najdłuższy pasujący podciąg (np. "SOT23-3"/"SOT-23-5" trafią w "SOT23").
+    "w" to zawsze dłuższy/naturalny wymiar obudowy (oś X), "h" krótszy (oś Y) — dzięki temu
+    orientacja wszystkich kieszeni w podstawce jest spójna (patrz allow_rotation=False).
+    Wymiary są przybliżone (typowe wartości katalogowe) — w razie potrzeby edytuj plik
+    footprint_sizes.json, który zostanie utworzony z tą zawartością przy pierwszym uruchomieniu.
+    """
+    return {
+        # --- elementy bierne SMD (kod calowy), zawsze 2 nóżki ---
+        "0201": {"w": 0.6, "h": 0.3, "depth": 0.3, "pins": 2},
+        "0402": {"w": 1.0, "h": 0.5, "depth": 0.5, "pins": 2},
+        "0603": {"w": 1.6, "h": 0.8, "depth": 0.8, "pins": 2},
+        "0805": {"w": 2.0, "h": 1.25, "depth": 1.0, "pins": 2},
+        "1206": {"w": 3.2, "h": 1.6, "depth": 1.1, "pins": 2},
+        "1210": {"w": 3.2, "h": 2.5, "depth": 1.3, "pins": 2},
+        "1812": {"w": 4.5, "h": 3.2, "depth": 1.5, "pins": 2},
+        "2010": {"w": 5.0, "h": 2.5, "depth": 1.3, "pins": 2},
+        "2220": {"w": 5.7, "h": 5.0, "depth": 1.6, "pins": 2},
+        "2512": {"w": 6.4, "h": 3.2, "depth": 1.6, "pins": 2},
+        # --- diody / tranzystory ---
+        "SOT23": {"w": 3.0, "h": 1.75, "depth": 1.3, "pins": 3},
+        "SOT233": {"w": 3.0, "h": 1.5, "depth": 1.3, "pins": 3},
+        "SOT235": {"w": 3.0, "h": 1.75, "depth": 1.3, "pins": 5},
+        "SOT236": {"w": 3.0, "h": 1.75, "depth": 1.3, "pins": 6},
+        "SOT238": {"w": 3.0, "h": 1.75, "depth": 1.3, "pins": 8},
+        "SOT223": {"w": 6.7, "h": 3.7, "depth": 1.8, "pins": 4},
+        "SOT2233": {"w": 6.7, "h": 3.7, "depth": 1.8, "pins": 3},
+        "SOT2234": {"w": 6.7, "h": 3.7, "depth": 1.8, "pins": 4},
+        "SOT89": {"w": 4.5, "h": 4.0, "depth": 1.6, "pins": 3},
+        "SOT323": {"w": 2.1, "h": 1.35, "depth": 1.0, "pins": 3},
+        "SOD123": {"w": 2.7, "h": 1.7, "depth": 1.1, "pins": 2},
+        "SOD323": {"w": 1.8, "h": 1.35, "depth": 1.05, "pins": 2},
+        "SOD523": {"w": 1.25, "h": 0.85, "depth": 0.65, "pins": 2},
+        "SMA": {"w": 4.3, "h": 2.7, "depth": 1.7, "pins": 2},
+        "DO214AC": {"w": 4.3, "h": 2.7, "depth": 1.7, "pins": 2},
+        "SMB": {"w": 5.4, "h": 3.5, "depth": 2.1, "pins": 2},
+        "DO214AA": {"w": 5.4, "h": 3.5, "depth": 2.1, "pins": 2},
+        "SMC": {"w": 7.9, "h": 6.5, "depth": 2.3, "pins": 2},
+        "DO214AB": {"w": 7.9, "h": 6.5, "depth": 2.3, "pins": 2},
+        "TO92": {"w": 5.2, "h": 4.5, "depth": 5.0, "pins": 3},
+        "TO220": {"w": 10.5, "h": 4.5, "depth": 15.0, "pins": 3},
+        "TO220V": {"w": 10.5, "h": 15.0, "depth": 4.5, "pins": 3},
+        "TO252": {"w": 6.6, "h": 6.1, "depth": 2.3, "pins": 3},
+        "TO263": {"w": 10.2, "h": 9.2, "depth": 2.3, "pins": 3},
+        # --- rezonatory / cewki ---
+        "HC49": {"w": 11.3, "h": 4.7, "depth": 13.0, "pins": 2},
+        "3225": {"w": 3.2, "h": 2.5, "depth": 1.0, "pins": 2},
+        "2016": {"w": 2.0, "h": 1.6, "depth": 0.7, "pins": 2},
+        "5032": {"w": 5.0, "h": 3.2, "depth": 1.3, "pins": 2},
+        "7050": {"w": 7.0, "h": 5.0, "depth": 1.5, "pins": 2},
+        # --- ogólne domyślne ---
+        "__DEFAULT__": {"w": 5.0, "h": 5.0, "depth": 3.0, "pins": 2},
+    }
+
+
+def load_footprint_db(path: str = FOOTPRINT_DB_FILE) -> dict:
+    """
+    Wczytuje bazę wymiarów obudów z pliku JSON. Jeśli plik nie istnieje — tworzy go
+    z wartościami domyślnymi (analogicznie do obsługi config.ini w tym programie).
+    Klucze w pliku są już znormalizowane (wielkie litery, bez spacji/myślników/podkreśleń).
+    """
+    if not os.path.exists(path):
+        db_default = _default_footprint_db()
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(db_default, f, indent=2, ensure_ascii=False, sort_keys=True)
+        print(f"Nie znaleziono pliku {path} — utworzono nowy z wymiarami domyślnymi obudów. "
+              f"Możesz go edytować, aby dodać/poprawić rozmiary konkretnych footprintów.")
+        return db_default
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            db = json.load(f)
+        if "__DEFAULT__" not in db:
+            db["__DEFAULT__"] = _default_footprint_db()["__DEFAULT__"]
+        # wsteczna kompatybilność: jeśli ktoś ma stary plik bez "pins", dopisz domyślnie 2
+        for k, v in db.items():
+            if "pins" not in v:
+                v["pins"] = 2
+        return db
+    except Exception as e:
+        print(f"Nie udało się wczytać {path} ({e}) — używam wbudowanych wartości domyślnych.")
+        return _default_footprint_db()
+
+
+def _norm_fp(name: str) -> str:
+    """Normalizacja nazwy footprintu/pakietu do porównań: same wielkie litery i cyfry.
+    Dzięki temu np. 'SOT-23-3', 'SOT23_3', 'sot 23-3' dają ten sam klucz i trafiają
+    w tę samą (lub najdłuższą pasującą częściowo) pozycję w bazie."""
+    return re.sub(r'[^A-Z0-9]', '', str(name or '').upper())
+
+
+# rodziny obudów wieloodprowadzeniowych parsowane parametrycznie z nazwy, gdy nie ma ich w bazie
+# pitch [mm], czy obudowa jest "kwadratowa 4-stronna" (QFP/QFN) czy "2-stronna" (SOIC/SSOP/TSSOP/DIP)
+_PARAM_FAMILIES = {
+    "TQFP": {"pitch": 0.5, "sides": 4, "lead_margin": 2.0, "depth": 1.4},
+    "LQFP": {"pitch": 0.5, "sides": 4, "lead_margin": 2.0, "depth": 1.4},
+    "QFP":  {"pitch": 0.8, "sides": 4, "lead_margin": 2.2, "depth": 1.6},
+    "QFN":  {"pitch": 0.5, "sides": 4, "lead_margin": 0.4, "depth": 0.9},
+    "DFN":  {"pitch": 0.5, "sides": 4, "lead_margin": 0.4, "depth": 0.8},
+    "SOIC": {"pitch": 1.27, "sides": 2, "lead_margin": 2.0, "depth": 1.75},
+    "SSOP": {"pitch": 0.65, "sides": 2, "lead_margin": 1.5, "depth": 1.75},
+    "TSSOP": {"pitch": 0.65, "sides": 2, "lead_margin": 1.5, "depth": 1.1},
+    "DIP":  {"pitch": 2.54, "sides": 2, "lead_margin": 3.0, "depth": 5.0},
+    "SDIP": {"pitch": 2.54, "sides": 2, "lead_margin": 3.0, "depth": 5.0},
+}
+_PARAM_FAMILY_RE = re.compile(r'(TQFP|LQFP|QFP|QFN|DFN|SOIC|SSOP|TSSOP|SDIP|DIP)0*(\d+)')
+_RADIAL_CAP_RE = re.compile(r'(?:^|[^0-9])D(\d+(?:\.\d+)?)')  # np. "CP_Radial_D5.0mm_P2.00mm" -> 5.0
+
+
+def _estimate_parametric(norm_name: str):
+    """Szacuje wymiary i liczbę nóżek dla obudów QFP/QFN/SOIC/TSSOP/SSOP/DIP na podstawie
+    liczby nóżek zawartej w nazwie (np. 'TQFP44', 'SOIC8', 'DIP16')."""
+    m = _PARAM_FAMILY_RE.search(norm_name)
+    if not m:
+        return None
+    family, pins_s = m.group(1), m.group(2)
+    pins = int(pins_s)
+    if pins <= 0:
+        return None
+    fam = _PARAM_FAMILIES[family]
+    pitch, lead_margin, depth = fam["pitch"], fam["lead_margin"], fam["depth"]
+
+    if fam["sides"] == 4:
+        leads_per_side = max(1, pins / 4)
+        size = leads_per_side * pitch + 2 * lead_margin
+        size = max(3.0, round(size * 2) / 2)  # zaokrąglenie do 0.5 mm
+        return {"w": size, "h": size, "depth": depth, "pins": pins}
+    else:
+        leads_per_side = max(1, pins / 2)
+        length = (leads_per_side - 1) * pitch + 2 * lead_margin
+        length = max(3.0, round(length * 2) / 2)
+        if family in ("SOIC",):
+            width = 7.5 if pins > 16 else 3.9
+        elif family in ("SSOP", "TSSOP"):
+            width = 6.1 if pins > 20 else 4.4
+        else:  # DIP / SDIP
+            width = 15.24 if pins >= 24 else 7.62
+        return {"w": length, "h": width, "depth": depth, "pins": pins}
+
+
+def estimate_footprint_dimensions(footprint: str, value: str, db: dict):
+    """
+    Zwraca (w_mm, h_mm, depth_mm, pins, dopasowano:bool, opis_dopasowania:str) dla danego footprintu.
+    Kolejność prób: 1) dokładne dopasowanie w bazie, 2) najdłuższy pasujący podciąg w bazie
+    (dzięki temu warianty typu 'SOT23-3', 'SOT-23-5' itp. trafiają w bazową obudowę 'SOT23'
+    nawet jeśli nie ma dla nich osobnego wpisu), 3) parametryczne oszacowanie
+    (QFP/QFN/SOIC/TSSOP/SSOP/DIP wg liczby nóżek w nazwie), 4) kondensator radialny
+    (po średnicy w nazwie footprintu), 5) wartość domyślna.
+    """
+    norm = _norm_fp(footprint) or _norm_fp(value)
+
+    if norm in db:
+        d = db[norm]
+        return d["w"], d["h"], d["depth"], d.get("pins", 2), True, f"dokładne dopasowanie '{norm}'"
+
+    candidates = [k for k in db.keys() if k != "__DEFAULT__" and k in norm]
+    if candidates:
+        best = max(candidates, key=len)
+        d = db[best]
+        return d["w"], d["h"], d["depth"], d.get("pins", 2), True, f"dopasowanie częściowe do '{best}'"
+
+    param = _estimate_parametric(norm)
+    if param:
+        return param["w"], param["h"], param["depth"], param["pins"], True, "oszacowanie parametryczne (liczba nóżek)"
+
+    m = _RADIAL_CAP_RE.search(norm)
+    if m:
+        dia = float(m.group(1))
+        return dia, dia, max(dia * 1.1, dia), 2, True, f"oszacowanie kondensatora radialnego (Ø{dia}mm)"
+
+    d = db.get("__DEFAULT__", {"w": 5.0, "h": 5.0, "depth": 3.0, "pins": 2})
+    return d["w"], d["h"], d["depth"], d.get("pins", 2), False, "nierozpoznany footprint — użyto wartości domyślnej"
+
+
+def _pack_shelves(items: list, max_width: float, spacing: float = 2.0, allow_rotation: bool = False):
+    """
+    Prosty, ale skuteczny algorytm pakowania 2D typu "shelf" (pakowanie w wiersze/półki).
+    items: lista dict z kluczami co najmniej 'w','h' (mm) — pozostałe pola są zachowywane.
+    Domyślnie allow_rotation=False, żeby wszystkie kieszenie zachowały tę samą, naturalną
+    orientację z bazy footprintów (patrz _default_footprint_db) — bez tego pakowanie
+    potrafiło obracać pojedyncze elementy o 90°, żeby "upchnąć" je ciaśniej, co dawało
+    niespójną orientację takich samych elementów w podstawce.
+    Zwraca (placements, plate_w, plate_h):
+      placements: lista (item, x, y, w_użyte, h_użyte) — x,y to lewy-dolny róg kieszeni w mm.
+      plate_w/plate_h: wymiary całej płyty potrzebne, żeby wszystko się zmieściło (z marginesami).
+    """
+    shelves = []  # {'y','height','x_cursor'}
+    placements = []
+    y_cursor = spacing
+
+    for it in items:
+        w0, h0 = float(it['w']), float(it['h'])
+        options = [(w0, h0)]
+        if allow_rotation and abs(w0 - h0) > 1e-6:
+            options.append((h0, w0))
+
+        best = None  # (marnowana_wysokosc, shelf, w, h)
+        for shelf in shelves:
+            avail_w = max_width - shelf['x_cursor']
+            for (w, h) in options:
+                if (w + spacing) <= avail_w and h <= shelf['height'] + 1e-9:
+                    waste = shelf['height'] - h
+                    if best is None or waste < best[0]:
+                        best = (waste, shelf, w, h)
+
+        if best is not None:
+            _, shelf, w, h = best
+            x, y = shelf['x_cursor'], shelf['y']
+            placements.append((it, x, y, w, h))
+            shelf['x_cursor'] += w + spacing
+        else:
+            valid = [(w, h) for (w, h) in options if (w + 2 * spacing) <= max_width]
+            w, h = min(valid, key=lambda wh: wh[1]) if valid else min(options, key=lambda wh: wh[1])
+            shelf = {'y': y_cursor, 'height': h, 'x_cursor': spacing}
+            x, y = shelf['x_cursor'], shelf['y']
+            placements.append((it, x, y, w, h))
+            shelf['x_cursor'] += w + spacing
+            y_cursor += h + spacing
+            shelves.append(shelf)
+
+    plate_h = y_cursor
+    return placements, max_width, plate_h
+
+
+def generate_component_holder_stl(
+    bom_path: str = None,
+    components: list = None,
+    output_path: str = "component_holder.stl",
+    base_thickness_mm: float = 1.5,
+    spacing_mm: float = 2.0,
+    clearance_mm: float = 0.3,
+    pocket_scale: float = 1.0,
+    max_width_mm: float = None,
+    group_by: str = "footprint",
+    add_finger_notches: bool = False,
+    finger_notch_diameter_mm: float = 3.0,
+    add_orientation_markers: bool = True,
+    marker_diameter_mm: float = 1.2,
+    marker_height_mm: float = 0.6,
+    footprint_db_path: str = FOOTPRINT_DB_FILE,
+    allow_rotation: bool = False,
+    add_alignment_holes: bool = True,
+    alignment_hole_diameter_mm: float = 3.5,
+    alignment_left_offset_mm: float = 8.0,
+    alignment_edge_offset_mm: float = 8.0,   # od górnej krawędzi do środka górnego otworu
+    alignment_pitch_mm: float = 25.0,        # rozstaw pionowy środków otworów
+    # Stała wysokość płyty (wymiar, w którym rozstawione są otwory kalibracyjne) — zawsze ta sama.
+    # Jeśli None, dobierana z otworów tak, aby zmieściły się przy górnej krawędzi
+    # (górny otwór y=edge_offset, dolny y=edge_offset+pitch) plus symetryczny dolny margines.
+    plate_height_mm: float = None,
+    # Docelowy minimalny stosunek szerokości do wysokości — 0 = brak wymuszenia (szerokość wynika
+    # z liczby elementów; małe zestawy wychodzą smukłe). >0 wymusza, by płyta była przynajmniej
+    # tak szeroka jak ten ułamek stałej wysokości.
+    plate_width_ratio: float = 0.0,
+) -> str:
+    """
+    Generuje plik STL prostopadłościennej podstawki z wyciętymi kieszeniami na komponenty
+    z BOM/pliku pick&place (lub z ręcznie podanej listy komponentów) i zapisuje go pod output_path.
+
+    Dane wejściowe (jedno z dwóch):
+      - bom_path: ścieżka do pliku BOM/pick&place — zostanie wczytany przez
+        parse_pick_and_place_auto() (obsługuje formaty EasyEDA/KiCad CSV, KiCad .pos, Gerber X3
+        i format ogólny). Każdy wiersz musi mieć co najmniej pole 'footprint' (i opcjonalnie 'value').
+      - components: ręcznie podana lista komponentów, np.:
+            [{'footprint': '0805', 'value': '100nF', 'ref': 'C1'},
+             {'footprint': '0805', 'value': '100nF', 'ref': 'C2'},
+             {'footprint': 'TQFP-44', 'value': 'ATmega328', 'ref': 'U1'}, ...]
+        (wystarczy klucz 'footprint'; 'value' i 'ref' są opcjonalne, używane tylko do grupowania/logu)
+
+    Parametry:
+      base_thickness_mm  - grubość LITEGO DNA (podłogi) pod wgłębieniami (mm), domyślnie 1.5.
+                              Elementy SMD „leżą” w wgłębieniach (kieszeniach z dnem), które
+                              sięgają od górnej powierzchni płyty w dół o głębokość obudowy —
+                              NIGDY nie przebijają dna. Całkowita wysokość płyty =
+                              base_thickness_mm + najgłębsze wgłębienie.
+      spacing_mm          - odstęp/margines między kieszeniami i od krawędzi płyty (mm)
+      clearance_mm         - dodatkowy luz doliczany do każdego wymiaru kieszeni przed przeskalowaniem (mm)
+      pocket_scale          - mnożnik rozmiaru (szerokość/wysokość) każdej kieszeni,
+                              np. 1.2 = kieszenie o 20% większe. Przydatne przy drukarkach, które
+                              drukują otwory zaniżone. Domyślnie 1.0 (brak zmiany).
+      max_width_mm          - maksymalna szerokość płyty (mm); jeśli None, dobierana automatycznie
+                              tak, żeby płyta była zwarta (bez sztucznego minimum)
+      group_by              - 'footprint' (grupuj tylko po obudowie) albo 'footprint+value'
+                              (osobne kieszenie np. dla różnych wartości rezystorów o tym samym footprint)
+      add_finger_notches    - czy dodać dodatkowe półokrągłe wycięcia ułatwiające wyjmowanie elementów
+                              palcami (domyślnie wyłączone — przydatne tylko przy ręcznym montażu;
+                              przy wyjmowaniu głowicą pick&place są zbędne)
+      finger_notch_diameter_mm - średnica wycięcia na palec (mm), używane tylko gdy add_finger_notches=True
+      add_orientation_markers - czy dodać małe wypustki oznaczające orientację elementu (pin 1 /
+                              katodę/polaryzację). Wypustka leży w LEWYM DOLNYM rogu obrysu
+                              (footprintu) KAŻDEGO elementu, stycznie NA ZEWNĄTRZ wgłębienia —
+                              nie zachodzi na otwór. Kropka jest dodawana do każdej kieszeni bez
+                              zgadywania, czy dana obudowa faktycznie ma polaryzację (takie
+                              rozpoznawanie łatwo przeoczyłoby jakiś komponent) — dzięki stałej
+                              konwencji zawsze wiesz, gdzie jest pin 1 / katoda.
+      marker_diameter_mm       - średnica podstawy wypustki orientacyjnej (mm)
+      marker_height_mm          - wysokość wypustki ponad górną powierzchnią płyty (mm)
+      footprint_db_path       - ścieżka do pliku JSON z bazą wymiarów obudów (tworzony automatycznie)
+      allow_rotation           - czy pakowanie może obracać kieszenie o 90 stopni dla lepszego
+                              upakowania. Domyślnie False, żeby wszystkie elementy tego samego
+                              (i różnych) typu miały spójną, przewidywalną orientację w podstawce.
+      add_alignment_holes    - czy dodać dwa otwory kalibracyjne (do mocowania płyty i jako
+                              jednoznaczny punkt odniesienia „lewej/górnej” strony). Przelotowe
+                              przez całą grubość płyty.
+      alignment_hole_diameter_mm - średnica otworów kalibracyjnych (mm), domyślnie 3.5
+      alignment_left_offset_mm   - odległość środka otworu od LEWEJ krawędzi płyty (mm), domyślnie 8
+      alignment_edge_offset_mm   - odległość środka GÓRNEGO otworu od GÓRNEJ krawędzi płyty (mm),
+                              domyślnie 8 (środek dolnego otworu = +alignment_pitch_mm niżej)
+      alignment_pitch_mm         - rozstaw pionowy (odległość środków) obu otworów (mm), domyślnie 25
+
+    Zwraca ścieżkę do zapisanego pliku STL.
+    """
+    if not bom_path and not components:
+        raise ValueError("Podaj bom_path (ścieżkę do pliku BOM/pick&place) albo components (listę komponentów).")
+
+    if components is None:
+        rows = parse_pick_and_place_auto(bom_path)
+    else:
+        rows = components
+
+    if not rows:
+        raise ValueError("Lista komponentów jest pusta — brak danych do wygenerowania podstawki.")
+
+    db = load_footprint_db(footprint_db_path)
+
+    # --- grupowanie komponentów wg footprintu (lub footprint+value) ---
+    groups = {}  # key -> {'w','h','depth','pins','count','label','matched','note'}
+    unmatched_labels = set()
+    for r in rows:
+        fp = r.get('footprint', '') or r.get('Footprint', '')
+        val = r.get('value', '') or r.get('Value', '')
+        w, h, depth, pins, matched, note = estimate_footprint_dimensions(fp, val, db)
+        w_c = (w + 2 * clearance_mm) * pocket_scale
+        h_c = (h + 2 * clearance_mm) * pocket_scale
+
+        key = _norm_fp(fp) if group_by == "footprint" else (_norm_fp(fp) + "|" + _norm_fp(val))
+        if key not in groups:
+            label = fp.strip() if fp else (val.strip() or "?")
+            if group_by == "footprint+value" and val:
+                label = f"{fp.strip()} ({val.strip()})" if fp else val.strip()
+            groups[key] = {"w": w_c, "h": h_c, "depth": depth, "pins": pins, "count": 0,
+                           "label": label, "matched": matched, "note": note}
+        groups[key]["count"] += 1
+        if not matched:
+            unmatched_labels.add(fp.strip() or val.strip() or "?")
+
+    if unmatched_labels:
+        print("UWAGA: następujące footprinty nie zostały rozpoznane i otrzymały rozmiar domyślny "
+              f"({db.get('__DEFAULT__', {})}). Popraw je w {footprint_db_path}, aby zwiększyć dokładność:")
+        for lbl in sorted(unmatched_labels):
+            print(f"  - {lbl}")
+
+    # --- rozbicie grup na pojedyncze kieszenie (utrzymując te same typy obok siebie) ---
+    ordered_groups = sorted(groups.values(), key=lambda g: max(g["w"], g["h"]), reverse=True)
+    items = []
+    for g in ordered_groups:
+        for _ in range(g["count"]):
+            items.append({"w": g["w"], "h": g["h"], "depth": g["depth"], "pins": g["pins"],
+                          "label": g["label"]})
+
+    total_area = sum(it["w"] * it["h"] for it in items)
+    largest_dim = max(max(it["w"], it["h"]) for it in items)
+
+    # ------------------------------------------------------------------
+    # Stała wysokość płyty H — zawsze taka sama (wynika z otworów kalibracyjnych,
+    # które są rozstawione pionowo przy lewej krawędzi). Szerokość płyty rośnie
+    # z liczbą komponentów (dorysowujemy kolejne kieszenie w poziomych "wierszach").
+    # ------------------------------------------------------------------
+    if add_alignment_holes:
+        # Stała wysokość płyty to oś, w której otwory leżą na LEWYM brzegu (każdy środek 8 mm
+        # od swojej krawędzi), a między nimi 25 mm:
+        #   górny otwór:  y = edge(8)    od górnej krawędzi
+        #   dolny otwór:  y = plate_h - edge(8)  →  8 mm od DOLNEJ krawędzi
+        #   plate_h = 8 + 25 + 8 = 41
+        min_holes_h = 2.0 * alignment_edge_offset_mm + alignment_pitch_mm
+    else:
+        min_holes_h = 0.0
+    const_plate_h = min_holes_h if plate_height_mm is None else float(plate_height_mm)
+
+    # Szerokość pakowania dobieramy tak, aby kieszenie wypełniły dostatecznie stałą wysokość
+    # const_plate_h minimalną szerokością — bez gigantycznych, prawie pustych półek.
+    # Szerokość pakowania dobieramy jako NAJMNIEJSZĄ, która mieści kieszenie (rośnie z liczbą
+    # komponentów). Przy stałej wysokości (otwory) małe zestawy dadzą wąska, "smukłą" płytkę —
+    # co jest oczekiwane. plate_width_ratio >=0 pozwala wymusić minimalny stosunek szer. do wys.
+    def _pack_try(width):
+        return _pack_shelves(items, width, spacing=spacing_mm, allow_rotation=allow_rotation)
+
+    if max_width_mm is None:
+        # dolna granica: najszersza kieszeń (lub ewentualny ratio minimum)
+        floor_w = largest_dim + 2 * spacing_mm
+        pwr = float(plate_width_ratio)
+        if pwr > 0:
+            floor_w = max(floor_w, const_plate_h * pwr)
+        # górny, wykonalny punkt zaczynamy od "szerokiej" wartości (mieści się na pewno,
+        # jeśli nie, podwajamy) — potem schodzimy w dół do minimum.
+        width = max(floor_w, const_plate_h)
+        _, _, hh = _pack_try(width)
+        k = 0
+        while hh > const_plate_h + 1e-9 and k < 400:
+            width = width * 1.25
+            _, _, hh = _pack_try(width)
+            k += 1
+        if hh > const_plate_h + 1e-9:
+            raise ValueError(
+                f"Za dużo kieszeni, by zmieścić się w stałej wysokości {const_plate_h:.0f} mm "
+                f"nawet dla szerokości {width:.0f} mm. Zwiększ plate_height_mm lub podziel listę.")
+        # binarne szukanie najmniejszej szerokości (lo=floor_w, hi=wykonalna)
+        lo, hi = floor_w, width
+        for _ in range(50):
+            mid = (lo + hi) / 2.0
+            _, _, hmid = _pack_try(mid)
+            if hmid <= const_plate_h + 1e-9:
+                hi = mid
+            else:
+                lo = mid
+        width = hi
+        placements, plate_w, _pack_h = _pack_try(width)
+    else:
+        # user podał max_width_mm -> używamy go wprost (także dla wygody eksperymentów)
+        width = float(max_width_mm)
+        placements, plate_w, _pack_h = _pack_try(width)
+    # Wysokość płyty (wymiar, w którym stałe są otwory) zawsze = const_plate_h.
+    plate_h = const_plate_h
+
+    # Dopisz lewy pas pod otwory kalibracyjne (kieszenie po prawej).
+    wall_extra = 1.0  # mm litej płyty między otworem a kieszenią
+    hole_r = alignment_hole_diameter_mm / 2.0 if add_alignment_holes else 0.0
+    first_left = min((x for (it, x, y, w, h) in placements), default=0.0)
+    if add_alignment_holes:
+        need_left = alignment_left_offset_mm + hole_r + wall_extra
+        left_gutter = max(0.0, need_left - first_left)
+    else:
+        left_gutter = 0.0
+    if left_gutter > 1e-9:
+        placements = [(it, x + left_gutter, y, w, h) for (it, x, y, w, h) in placements]
+        plate_w = plate_w + left_gutter
+
+    # wyrównanie w pionie: środkujemy treść w wysokości const_plate_h (top area przy y=0?)
+    # Uwaga: otwory przy górze (y=edge_offset), treść może wypełniać od wierzchu w dół.
+    # Prosty wybór: zostawiamy y z pakowania (startuje od spacing poniżej y=0).
+    # ------------------------------------------------------------------------------------
+
+    # ---- otwory kalibracyjne (2 szt., przelot przez całą grubość) ----
+    hole_centers = []  # (cx, cy) w płaszczyźnie XY
+    alignment_r = 0.0
+    if add_alignment_holes:
+        alignment_r = alignment_hole_diameter_mm / 2.0
+        if alignment_r <= 0.0:
+            raise ValueError("alignment_hole_diameter_mm musi być > 0.")
+        # otwory na LEWEJ krawędzi płyty, pionowo: górny 8 mm od górnej krawędzi,
+        # dolny 8 mm od DOLNEJ krawędzi (i 25 mm od górnego → plate_h = 8+25+8)
+        hole_centers.append((alignment_left_offset_mm, alignment_edge_offset_mm))
+        hole_centers.append((alignment_left_offset_mm, plate_h - alignment_edge_offset_mm))
+        for nm, (cx, cy) in (("górny", hole_centers[0]), ("dolny", hole_centers[1])):
+            if not (alignment_r - 0.5 <= cx <= plate_w - alignment_r + 0.5
+                    and alignment_r - 0.5 <= cy <= plate_h - alignment_r + 0.5):
+                raise ValueError(
+                    f"Otwór kalibracyjny {nm} (środek {cx:.1f},{cy:.1f}, r={alignment_r:.3f}) nie "
+                    f"mieści się w płycie {plate_w:.1f} x {plate_h:.1f} mm — zwiększ szerokość "
+                    f"(więcej elementów) lub zmień alignment_*_offset / plate_height_mm.")
+    # ------------------------------------------------------------------------------------------
+
+    # Kieszenie -> SĄ WCIĘCIAMI (wgłębieniami) z litym dnem, a nie otworami przelotowymi,
+    # bo element SMD ma "leżeć" w kieszeni, a nie przez nią przewlekać. Grubość litego dna
+    # (podłogi) pod elementami jest STAŁA i równa base_thickness_mm (domyślnie 1.5 mm).
+    # Całkowita wysokość bryły to podłoga + najgłębsze wgłębienie, dzięki czemu każda kieszeń
+    # sięga od górnej powierzchni w dół o swoją głębokość, ale nigdy głębiej niż do podłogi.
+    max_depth = max(it["depth"] for it in items)
+    total_h = base_thickness_mm + max_depth
+    top_z = total_h
+    overshoot = 1.0  # tylko na zewnątrz (powyżej) krawędzi wgłębienia, by uniknąć współpłaszczyznowych ścian
+
+    print(f"Podstawka: {plate_w:.1f} x {plate_h:.1f} x {total_h:.1f} mm, kieszeni: {len(items)}, "
+          f"typów komponentów: {len(ordered_groups)}, skala kieszeni: {pocket_scale:.2f}x")
+
+    # --- bryła bazowa: podłoga + słup o wysokości najgłębszej kieszeni ---
+    base = trimesh.creation.box(extents=[plate_w, plate_h, total_h])
+    base.apply_translation([plate_w / 2.0, plate_h / 2.0, total_h / 2.0])
+
+    # otwory kalibracyjne wykrawamy przez całą grubość płyty
+    cutters = []
+    markers = []
+    for (cx, cy) in hole_centers:
+        ch = trimesh.creation.cylinder(radius=alignment_r, height=total_h + 2.0 * overshoot, sections=32)
+        ch.apply_translation([cx, cy, total_h / 2.0])
+        cutters.append(ch)
+    for (it, x, y, w, h) in placements:
+        depth = it["depth"]
+        cx, cy = x + w / 2.0, y + h / 2.0
+        # wgłębienie: od górnej powierzchni (top_z) w dół o (depth+overshoot); spód wgłębienia
+        # zatrzymuje się nad podłogą base_thickness_mm — dno nigdy nie jest przebite.
+        cz = top_z - depth / 2.0 + overshoot / 2.0
+        pocket = trimesh.creation.box(extents=[w, h, depth + overshoot])
+        pocket.apply_translation([cx, cy, cz])
+        cutters.append(pocket)
+
+        if add_finger_notches:
+            notch_r = min(finger_notch_diameter_mm / 2.0, spacing_mm * 0.9, w * 0.4, h * 0.4)
+            if notch_r >= 0.5:
+                notch = trimesh.creation.cylinder(radius=notch_r, height=depth + overshoot, sections=24)
+                notch.apply_translation([cx, y, cz])
+                cutters.append(notch)
+
+        # Pin 1 / polaryzacja — KAŻDA kieszeń dostaje wypustkę w DOLNYM-LEWYM rogu obrysu
+        # (footprintu) elementu, patrząc na płytę od góry w układzie:
+        #   * otwory kalibracyjne po LEWEJ, pionowo (top hole u góry),
+        #   * wiersze kieszeni biegną POZIOMO w prawo od kolumny otworów,
+        #   * "dół" płyty = większe y (wiersze poniżej / dalsze od góry).
+        # Dla kieszeni o narożniku (x,y) (x = odległość od lewej, y od wiersza/góry), lewy-dolny
+        # róg obrysu to (x, y+h). Środek kropki jest odsunięty po przekątnej NA ZEWNĄTRZ tego
+        # narożnika o r/√2, więc okrąg podstawy jest styczny do rogu otworu i w całości leży na
+        # litej płycie (% nie nachodzi na wgłębienie). Kropka jest dodawana dla KAŻDEGO elementu
+        # (konwencja zawsze taka sama - bez zgadywania polaryzacji).
+        if add_orientation_markers:
+            marker_r = min(marker_diameter_mm / 2.0, spacing_mm * 0.45, w * 0.35, h * 0.35)
+            if marker_r >= 0.3:
+                off = marker_r / (2.0 ** 0.5)  # odsunięcie od narożnika po przekątnej
+                # lewy-dolny róg kieszeni (x, y+h): "lewo" (=mały x, strona otworów) i "dół"
+                # (=duży y). Odsuwamy kropkę w lewo i w dół (na zewnątrz rogu).
+                mx, my = x - off, (y + h) + off
+                marker = trimesh.creation.cone(radius=marker_r, height=marker_height_mm, sections=16)
+                # Stożek z trimesh.creation.cone ma PODSTAWĘ na z=0, wierzchołek na z=height.
+                # Przesunięcie o top_z stawia podstawę na górnej powierzchni płyty.
+                marker.apply_translation([mx, my, top_z])
+                markers.append(marker)
+
+    result = base.difference(cutters, engine="manifold") if cutters else base
+    if markers:
+        result = result.union(markers, engine="manifold")
+
+    if not result.is_watertight:
+        print("OSTRZEŻENIE: wygenerowana siatka nie jest w pełni szczelna (is_watertight=False). "
+              "Plik STL i tak zostanie zapisany, ale warto zweryfikować go np. w PrusaSlicerze/Cura "
+              "(funkcja 'napraw modelu').")
+
+    out_dir = os.path.dirname(output_path)
+    if out_dir and not os.path.exists(out_dir):
+        os.makedirs(out_dir, exist_ok=True)
+    result.export(output_path)
+    print(f"Zapisano podstawkę STL: {output_path}")
+    return output_path
+
+
+def menu_generate_component_holder_stl():
+    """
+    Prosty interfejs konsolowy (z użyciem okien dialogowych do wyboru plików) do wygenerowania
+    podstawki STL na podstawie pliku BOM/pick&place. Do podpięcia w menu głównym programu.
+    """
+    print("Generator podstawki STL pod elementy z BOM/pick&place.")
+    bom_path = filedialog.askopenfilename(
+        title="Wybierz plik BOM / pick&place (CSV/POS/Gerber)",
+    )
+    if not bom_path:
+        print("Nie wybrano pliku.")
+        return
+    out_path = filedialog.asksaveasfilename(
+        title="Wybierz miejsce zapisu podstawki STL",
+        defaultextension=".stl",
+        filetypes=[("STL Files", "*.stl")],
+    )
+    if not out_path:
+        print("Nie wybrano miejsca zapisu.")
+        return
+
+    pocket_scale = float(config.get("holder_pocket_scale", 1.0)) if isinstance(config, dict) else 1.0
+    base_thickness_mm = 1.5
+
+    try:
+        generate_component_holder_stl(
+            bom_path=bom_path,
+            output_path=out_path,
+            pocket_scale=pocket_scale,
+            base_thickness_mm=base_thickness_mm,
+        )
+    except Exception as e:
+        print(f"Błąd podczas generowania podstawki STL: {e}")
+    input("Naciśnij Enter, aby kontynuować...")
+
+# =====================================================================================
+# ================  KONIEC GENERATORA PODSTAWKI STL POD ELEMENTY Z BOM  ==============
+# =====================================================================================
+
+
 # --- pomocnik: pix -> machine (używamy istniejącej homografii top) ---
 def pix_to_machine(px, py, camera='top'):
     H = load_homography(camera=camera)   # pix -> machine (mm)
@@ -4254,7 +4867,8 @@ zlevelmin = format_value(config['zlevelmin'])
 cut_z = format_value(config['cut_z'])
 while True:
     cls()
-    print("*Menu*\n1. Wygeneruj gcode\n2. Zmień ustawienia\n3. Kalibracja\n4. Połączenie\n5. Wyjście")
+    print("*Menu*\n1. Wygeneruj gcode\n2. Zmień ustawienia\n3. Kalibracja\n4. Połączenie\n"
+          "5. Wygeneruj podstawkę STL pod elementy z BOM\n6. Wyjście")
     wybor = int(readchar.readchar())
     if wybor == 1:
         if polaczenie < 3:
@@ -4540,13 +5154,14 @@ while True:
                 5: "travel_z", 6: "end_move", 7: "xyfeedrate", 8: "zfeedrate",
                 9: "spindle", 10: "multi_depth", 11: "zdrill",
                 12: "milldrill_diameter", 13: "zcut_outline", 14: "outline_xyfeedrate",
-                15: "bridges", 16: "bridgesnum", 17: "zbridges", 18: "delta", 19: "zlevelmax", 20: "zlevelmin"
+                15: "bridges", 16: "bridgesnum", 17: "zbridges", 18: "delta", 19: "zlevelmax", 20: "zlevelmin",
+                21: "holder_pocket_scale"
             }
             for num, key in options.items():
                 print(f"{num}. {key.replace('_', ' ').capitalize()}: {config[key]}")
-            print("21. Powrót do menu głównego")
+            print("22. Powrót do menu głównego")
             wybor_ustawienia = int(input())
-            if wybor_ustawienia == 21:
+            if wybor_ustawienia == 22:
                 millproject_content = save_millproject(config)
                 with open("millproject", "w") as f:
                     f.write(millproject_content)
@@ -4801,5 +5416,7 @@ while True:
             else:
                 input("podano błędne dane")
     elif wybor == 5:
+        menu_generate_component_holder_stl()
+    elif wybor == 6:
         break
 

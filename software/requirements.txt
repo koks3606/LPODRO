@@ -22,3 +22,5 @@ six==1.17.0
 typing==3.7.4.3
 uuid==1.30
 zeroconf==0.148.0
+manifold3d==3.5.2
+trimesh==5.1.0
