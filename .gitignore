@@ -6,3 +6,4 @@ software/*
 !software/requirements.txt
 !software/grbl_config.txt
 *.odt
+*.toml
