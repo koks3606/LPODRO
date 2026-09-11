@@ -5744,4 +5744,113 @@ while True:
         menu_generate_component_holder_stl()
     elif wybor == 6:
         break
+    elif wybor == 9:
+        #stream_gcode_list(ser, unlock)
+        #stream_gcode_list(ser, home)
+        Xpnp = 80
+        Ypnp = 80
+        print("Czy chcesz wykonać operacje PnP na wykonanej płytce? (t/n)")
+        wybor = str(readchar.readchar())
+        if wybor.lower() != "t":
+            # użytkownik nie chce PnP -> wychodzimy
+            break
+        else:
+            # 1) Upewnij się, że X0,Y0 są w pamięci (wyznaczone przy frezowaniu)
+            try:
+                Xpnp, Ypnp
+            except NameError:
+                raise RuntimeError("Brak zdefiniowanych zmiennych xa/ya — najpierw wykonaj detekcję punktu 0 przed frezowaniem.")
+
+            X0 = Xpnp
+            Y0 = Ypnp
+
+            # 2) Wczytaj plik PnP
+            sciezka_pnp = filedialog.askopenfilename(title="Wybierz plik PnP")
+            if not sciezka_pnp:
+                print("Nie wybrano pliku PnP.")
+            else:
+                placements = parse_pick_and_place_auto(sciezka_pnp)
+                print(f"rows: {len(placements)}")
+                xs = [r['x'] for r in placements if r.get('x') is not None]
+                ys = [r['y'] for r in placements if r.get('y') is not None]
+                if xs and ys:
+                    print(f"span_x = {max(xs)-min(xs):.3f} mm, span_y = {max(ys)-min(ys):.3f} mm")
+                print("first 8 rows:")
+                for r in placements[:8]:
+                    print(" ", r)
+
+                print("Czy wszystko się zgadza? (t/n)")
+                wybor = str(readchar.readchar())
+                if wybor.lower() != "t":
+                    print("Anulowano PnP przez użytkownika.")
+                else:
+                    # =====================================================================
+                    # PnP Z PODSTAWKĄ (płyta z elementami) — nowy przebieg, bez detekcji.
+                    # Zamiast rozkładać elementy na blacie i wykrywać je kamerą, użytkownik
+                    # mocuje przygotowaną podstawkę (z wypełnionymi kieszeniami) w stałym
+                    # miejscu stołu. Program zna jej layout (ten sam plik PnP i te same
+                    # ustawienia co przy generowaniu STL) oraz współrzędne MASZYNOWE
+                    # otworów mocujących — dzięki czemu zna położenie każdego elementu.
+                    # =====================================================================
+
+                    # 1) punkt odniesienia podstawki (współrzędne otworów z config.ini)
+                    plate_ref = plate_reference_from_config()
+
+                    # 2) layout podstawki — przeliczony z TEGO SAMEGO pliku PnP, którym
+                    #    posłużono się przy generowaniu STL (spójne ustawienia z config.ini)
+                    layout = compute_component_holder_layout(
+                        bom_path=sciezka_pnp,
+                        pocket_scale=float(config.get("holder_pocket_scale", 1.0)),
+                        group_by=config.get("holder_group_by", "footprint+value"),
+                    )
+                    h1 = plate_ref['hole1']
+                    h2 = plate_ref['hole2']
+                    print(f"\nPodstawka: {layout['plate_w']:.1f} x {layout['plate_h']:.1f} mm, "
+                            f"kieszeni: {len(layout['pockets'])}, grupowanie: {layout['group_by']}, "
+                            f"skala kieszeni: {layout['pocket_scale']:.2f}")
+                    print(f"Otwór górny (maszyna): X={h1[0]:.2f}  Y={h1[1]:.2f} mm")
+                    print(f"Otwór dolny (maszyna): X={h2[0]:.2f}  Y={h2[1]:.2f} mm")
+
+                    input("\nZamocuj podstawkę wypełnioną elementami w stałym miejscu stołu "
+                            "(otwory mocujące na śruby/kołki) i naciśnij Enter...")
+
+                    # 3) dopasuj placementy do kieszeni i przelicz na współrzędne maszyny
+                    pick_coords, unmatched = plate_layout_to_pick_coords(layout, placements, h1, h2)
+                    if unmatched:
+                        print(f"\n[UWAGA] Nie znaleziono kieszeni dla {len(unmatched)} placementów:")
+                        for pl in unmatched[:10]:
+                            print(f"  - {pl.get('ref')}: footprint={pl.get('footprint')} "
+                                    f"value={pl.get('value')}")
+                        print("Upewnij się, że podstawka została wygenerowana z TEGO SAMEGO pliku "
+                                "PnP (i tego samego grupowania 'footprint+value').")
+                    if not pick_coords:
+                        raise RuntimeError("Nie dopasowano żadnego placementu do kieszeni podstawki.")
+
+                    print(f"\nPlan PnP — {len(pick_coords)} elementów do podniesienia z podstawki "
+                            "(współrzędne maszyny, mm):")
+                    for p in pick_coords[:20]:
+                        print(f"  {p['ref']} ({p['footprint']} {p['value']}) -> "
+                                f"X={p['machine_x']:.2f} Y={p['machine_y']:.2f}")
+                    if len(pick_coords) > 20:
+                        print(f"  ... i {len(pick_coords) - 20} kolejnych.")
+                    print("Czy plan się zgadza? (t/n)")
+                    wybor = str(readchar.readchar())
+                    if wybor.lower() != "t":
+                        print("Anulowano PnP przez użytkownika.")
+                    else:
+                        # 4) przygotowanie wysokości PnP (jak w poprzednim przebiegu)
+                        send_message("HOME")
+                        z = get_z_from_status(ser)
+                        pnp_z_zero = z + 3
+                        camera_distance = 10 - pnp_z_zero
+                        stream_gcode_list(ser, unlock)
+                        stream_gcode_list(ser, home)
+
+                        # 5) właściwy proces PnP (podnoszenie, inspekcja kamerą 'up',
+                        #    obrót i odkładanie na płytkę)
+                        pnp_session_loop(pick_coords=pick_coords, placements=placements, ser=ser,
+                                            camera_x=pnp_cam_x, camera_y=pnp_cam_y,
+                                            pnp_z_zero=pnp_z_zero, camera_distance=camera_distance)
+
+
 
